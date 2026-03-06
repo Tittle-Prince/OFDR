@@ -1,0 +1,20 @@
+# FBG 物理参数 (全同超弱光栅)
+fbg_params:
+  lambda_B0: 1550.0      # 初始中心波长 (nm)
+  L: 0.005               # 光栅长度 (m)，即 5mm
+  dn: 5.0e-6             # 折射率调制深度 (超弱光栅设置得很小)
+  neff: 1.468            # 纤芯有效折射率
+  K_T: 0.01              # 温度灵敏度系数 (nm/°C)
+
+# 仿真参数
+sim_params:
+  wl_start: 1549.0       # 观测波长起始 (nm)
+  wl_end: 1551.0         # 观测波长结束 (nm)
+  num_points: 401        # 波长采样点数 (对标 IEEE 论文的 401 个点)
+  dz: 50.0e-6            # 空间切片精度 (m)
+
+# 数据集生成参数
+dataset:
+  num_samples: 5000      # 生成的总样本数
+  noise_level: 0.08      # 噪声强度 (8%的峰值噪声，极其恶劣的环境)
+  save_path: "data/processed/uwfbg_dataset.npz" # 数据保存路径
