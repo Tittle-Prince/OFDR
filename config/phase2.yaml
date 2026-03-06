@@ -1,0 +1,22 @@
+phase2:
+  seed: 42
+  data_path: "data/processed/dataset_a_phase1.npz"
+  results_dir: "check/result/phase2"
+  lambda_b0_nm: 1550.0
+
+train:
+  batch_size: 128
+  lr: 0.001
+  weight_decay: 0.0
+  epochs: 40
+  patience: 8
+
+cross_correlation:
+  normalize_reference: true
+  reference_sigma_nm: 0.10
+  reference_amplitude: 1.0
+  reference_baseline: 0.0
+
+parametric_fitting:
+  fit_window_points: 61
+  baseline_percentile: 10

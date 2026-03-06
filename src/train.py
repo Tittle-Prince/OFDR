@@ -1,96 +1,85 @@
 import torch
-import torch.nn as nn       # <--- 加上这一行
-import torch.optim as optim
-import numpy as np
-from torch.utils.data import DataLoader, TensorDataset
-from model_pinn import FBG_CNN_Base, PINNLoss
+import torch.nn as nn
 
-# ... 下面的代码保持不变 ...
+# ==========================================
+# [新增模块] 1D SE 注意力机制 (Squeeze-and-Excitation)
+# 作用：动态评估各个通道提取到的光谱特征，抑制相邻光栅串扰带来的假峰特征
+# ==========================================
+class SEBlock1D(nn.Module):
+    def __init__(self, channel, reduction=8):
+        super().__init__()
+        self.avg_pool = nn.AdaptiveAvgPool1d(1) # 全局平均池化，获取全局感受野
+        self.fc = nn.Sequential(
+            nn.Linear(channel, channel // reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(channel // reduction, channel, bias=False),
+            nn.Sigmoid() # 输出 0~1 的权重，给重要特征加权，给串扰噪声降权
+        )
 
-def load_data(filepath="data/processed/uwfbg_dataset.npz"):
-    data = np.load(filepath)
-    X = data['X']        
-    Y_dT = data['Y_dT']  
-    
-    # 转换为 PyTorch Tensor (增加 Channel 维度)
-    X_tensor = torch.tensor(X, dtype=torch.float32).unsqueeze(1) 
-    Y_tensor = torch.tensor(Y_dT, dtype=torch.float32)
-    
-    # 80% 训练，20% 测试
-    split_idx = int(0.8 * len(X))
-    train_dataset = TensorDataset(X_tensor[:split_idx], Y_tensor[:split_idx])
-    test_dataset = TensorDataset(X_tensor[split_idx:], Y_tensor[split_idx:])
-    
-    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
-    
-    return train_loader, test_loader, X_tensor[split_idx:], Y_tensor[split_idx:]
+    def forward(self, x):
+        b, c, _ = x.size()
+        y = self.avg_pool(x).view(b, c)
+        y = self.fc(y).view(b, c, 1)
+        return x * y.expand_as(x)
 
-def train_model(train_loader, use_pinn=False, epochs=40, label_ratio=0.05):
-    model = FBG_CNN_Base(input_size=401)
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-    
-    alpha_weight = 10.0 if use_pinn else 0.0
-    criterion = PINNLoss(alpha=alpha_weight, K_T=0.01)
-    
-    mode_name = "半监督 PINN (物理驱动)" if use_pinn else "普通 CNN (纯数据驱动)"
-    print(f"\n🚀 开始训练 {mode_name}...")
-    
-    for epoch in range(epochs):
-        model.train()
-        total_loss = 0
+# ==========================================
+# 核心网络：PI-ACNN (物理信息注意力卷积网络)
+# ==========================================
+class FBG_CNN_Base(nn.Module):
+    def __init__(self, input_size=401):
+        super().__init__()
         
-        for batch_X, batch_Y in train_loader:
-            optimizer.zero_grad()
-            dT_pred, dlam_pred = model(batch_X)
-            
-            # 【杀招】：人为制造标签稀缺，每个 batch 只取前 label_ratio 有标签
-            split_idx = max(1, int(label_ratio * len(batch_X)))
-            
-            if use_pinn:
-                # PINN：少部分算有监督Loss，大部分算无监督物理Loss
-                loss_labeled = criterion(dT_pred[:split_idx], dlam_pred[:split_idx], batch_Y[:split_idx])
-                loss_unlabeled = criterion(dT_pred[split_idx:], dlam_pred[split_idx:], dT_true=None)
-                loss = loss_labeled + loss_unlabeled
-            else:
-                # 普通 CNN：无标签数据直接作废，只能用一小撮数据算 MSE
-                loss = nn.MSELoss()(dT_pred[:split_idx], batch_Y[:split_idx])
-            
-            loss.backward()
-            optimizer.step()
-            total_loss += loss.item()
-            
-        if (epoch + 1) % 10 == 0:
-            print(f"Epoch [{epoch+1}/{epochs}], Loss: {total_loss/len(train_loader):.4f}")
-            
-    return model
+        # 1. 浅层特征提取 (捕捉光谱基础边缘和峰位)
+        self.layer1 = nn.Sequential(
+            nn.Conv1d(1, 32, kernel_size=5, padding=2),
+            nn.BatchNorm1d(32), nn.ReLU(),
+            nn.MaxPool1d(2)
+        )
+        
+        # 2. 中层特征提取 + 注意力机制 (开始辨别真假峰和串扰)
+        self.layer2 = nn.Sequential(
+            nn.Conv1d(32, 64, kernel_size=5, padding=2),
+            nn.BatchNorm1d(64), nn.ReLU(),
+            SEBlock1D(channel=64), # 插入注意力机制
+            nn.MaxPool1d(2)
+        )
+        
+        # 3. 深层大感受野提取 (使用空洞卷积 dilation=2，捕捉全局畸变展宽包络)
+        self.layer3 = nn.Sequential(
+            nn.Conv1d(64, 128, kernel_size=5, padding=4, dilation=2),
+            nn.BatchNorm1d(128), nn.ReLU(),
+            SEBlock1D(channel=128), # 再次插入注意力机制
+            nn.AdaptiveAvgPool1d(1) # [杀招] 无论前面多长，这里强行汇聚成全局特征，彻底抛弃单纯寻峰
+        )
+        
+        # 4. 物理双分支输出头 (不变，依然输出 温度 和 波长漂移)
+        self.regressor = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(128, 64), nn.ReLU(),
+            nn.Linear(64, 2) # [dT_pred, dlam_pred]
+        )
 
-def evaluate_model(model, X_test, Y_test):
-    model.eval()
-    with torch.no_grad():
-        dT_pred, _ = model(X_test)
-        rmse = torch.sqrt(torch.mean((dT_pred - Y_test)**2)).item()
-    return rmse
+    def forward(self, x):
+        x = self.layer1(x)
+        x = self.layer2(x)
+        features = self.layer3(x)
+        out = self.regressor(features)
+        return out[:, 0], out[:, 1]
 
-if __name__ == "__main__":
-    train_loader, test_loader, X_test, Y_test = load_data()
-    
-    # 设置极端的标签比例 (仅仅 5%)
-    LABEL_RATIO = 0.05
-    print(f"⚠️ 极限测试：仅提供 {LABEL_RATIO*100}% 的温度标签进行训练！")
-    
-    model_cnn = train_model(train_loader, use_pinn=False, epochs=50, label_ratio=LABEL_RATIO)
-    rmse_cnn = evaluate_model(model_cnn, X_test, Y_test)
-    
-    model_pinn = train_model(train_loader, use_pinn=True, epochs=50, label_ratio=LABEL_RATIO)
-    rmse_pinn = evaluate_model(model_pinn, X_test, Y_test)
-    
-    print("\n" + "="*50)
-    print(f"📊 极端少标签 + 高噪声场景下的测试集 RMSE:")
-    print(f"普通 8 层 CNN: {rmse_cnn:.4f} °C")
-    print(f"半监督 PINN:   {rmse_pinn:.4f} °C")
-    print(f"性能提升幅度:   {(rmse_cnn - rmse_pinn) / rmse_cnn * 100:.2f}%")
-    print("="*50)
-    torch.save(model_cnn.state_dict(), "results/models/cnn_baseline.pth")
-    torch.save(model_pinn.state_dict(), "results/models/pinn_semi_supervised.pth")
-    print("💾 模型权重已保存至 results/models/ 目录！")
+# ==========================================
+# 半监督物理信息损失函数 (保持不变)
+# ==========================================
+class PINNLoss(nn.Module):
+    def __init__(self, alpha=1.0, K_T=0.01):
+        super().__init__()
+        self.mse = nn.MSELoss()
+        self.alpha = alpha  
+        self.K_T = K_T      
+
+    def forward(self, dT_pred, dlam_pred, dT_true=None):
+        loss_physics = self.mse(dlam_pred, dT_pred * self.K_T)
+        if dT_true is not None:
+            loss_data = self.mse(dT_pred, dT_true)
+            return loss_data + self.alpha * loss_physics
+        else:
+            return self.alpha * loss_physics

@@ -1,0 +1,30 @@
+[
+  {
+    "method_key": "cross_correlation",
+    "method": "Cross-correlation",
+    "rmse": 0.0023858812637627125,
+    "mae": 0.002337460173293948,
+    "r2": 0.9999303221702576
+  },
+  {
+    "method_key": "parametric_fitting",
+    "method": "Parametric fitting",
+    "rmse": 0.0019108678679913282,
+    "mae": 0.0015269576106220484,
+    "r2": 0.9999552965164185
+  },
+  {
+    "method_key": "mlp",
+    "method": "MLP",
+    "rmse": 0.0023771305568516254,
+    "mae": 0.0016046520322561264,
+    "r2": 0.9999307990074158
+  },
+  {
+    "method_key": "cnn1d",
+    "method": "1D CNN",
+    "rmse": 0.0020469913724809885,
+    "mae": 0.0013587800785899162,
+    "r2": 0.9999486804008484
+  }
+]

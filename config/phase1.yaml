@@ -1,0 +1,30 @@
+phase1:
+  seed: 42
+  data_path: "data/processed/dataset_a_phase1.npz"
+  results_dir: "results/phase1"
+
+dataset:
+  num_samples: 8000
+  num_points: 512
+  lambda_b0_nm: 1550.0
+  lambda_window_nm: 2.0
+  linewidth_nm: 0.10
+  peak_amplitude: 1.0
+  baseline: 0.0
+  temp_min_c: -20.0
+  temp_max_c: 80.0
+  k_t_nm_per_c: 0.01
+  noise_std: 0.01
+  normalize: "minmax_per_sample"
+  clip_to_nonnegative: true
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+
+train:
+  batch_size: 128
+  lr: 0.001
+  weight_decay: 0.0
+  epochs: 40
+  patience: 8
+
