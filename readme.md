@@ -1,3 +1,5 @@
+# OFDR PINN Demodulation Project
+
 全同UWFBG + CNN 解调项目执行方案（浓缩版）
 
 一、总体原则 1. 先验证最小可行方案（MVP），再逐步增加复杂度。 
@@ -123,57 +125,156 @@ Phase 7：OFDR实测接入
 
 完成以上步骤后，再逐步推进后续阶段。
 
+全同 UWFBG + CNN 解调项目
 
-OFDR\_PINN\_Demodulation/
+---
 
-│
+## 📁 文件结构规范
 
-├── data/                   # 存放数据的仓库
+本项目采用严格的目录结构，所有文件应按照以下规范存放。
 
-│   ├── raw/                # 存放 TMM 刚生成的原始拍频信号和光谱
+### 1. `src/` - 源代码目录
 
-│   └── processed/          # 存放归一化、加噪后，随时可以喂给 PyTorch 的张量数据
+**核心文件**（必须放在 `src/core/`）：
+| 文件 | 说明 |
+|------|------|
+| `data_generation.py` | 仿真数据生成脚本（TMM物理仿真） |
+| `model_pinn.py` | PINN 模型定义 |
+| `train.py` | 训练入口脚本 |
+| `evaluate.py` | 模型评估脚本 |
+| `phase1_pipeline.py` | Phase1 数据处理流水线 |
 
-│
+**分阶段代码**（按版本存放）：
+```
+src/
+├── core/           # 核心文件（数据生成、模型定义、训练脚本）
+├── phase1/         # Phase1: 数据处理流水线
+├── phase2/         # Phase2: 基线方法（MLP、CNN1D、互相关法、参数拟合）
+├── phase3/         # Phase3: 鲁棒CNN模型（加噪数据训练）
+└── phase4a/        # Phase4: FBG阵列解调应用
+```
 
-├── notebooks/              # 草稿本
+---
 
-│   └── EDA\_visualization.ipynb # 用于前期随便画画图，看看 TMM 仿真的光谱畸变长什么样
+### 2. `results/` - 结果目录
 
-│
+**分类存放规则**：
 
-├── src/                    # 核心代码区 (你和 AI 主要的作战室)
+| 子目录 | 存放内容 | 示例文件 |
+|--------|----------|----------|
+| `results/models/` | 训练好的模型文件 | `*.pth`, `*.pt` |
+| `results/datasets/` | 生成的数据集文件 | `*.npz` |
+| `results/figures/` | 图表文件 | `*.png`, `*.pdf` |
+| `results/metrics/` | 指标文件 | `*.json`, `*.csv` |
 
-│   ├── \_\_init\_\_.py
+**模型文件组织**（按Phase分类）：
+```
+results/models/
+├── pinn_semi_supervised.pth    # 主模型
+├── cnn_baseline.pth            # CNN基线模型
+├── phase1/                     # Phase1 模型
+│   ├── phase1_cnn1d.pt
+│   └── phase1_mlp.pt
+├── phase2/                     # Phase2 模型
+│   ├── mlp/
+│   ├── cnn1d/
+│   ├── parametric_fitting/
+│   └── cross_correlation/
+└── phase3/                     # Phase3 模型
+    ├── cnn_baseline/
+    ├── cnn_dilated/
+    ├── cnn_se/
+    └── cnn_dilated_se/
+```
 
-│   ├── data\_generation.py  # 负责干脏活：用传输矩阵法(TMM)生成弱 FBG 阵列数据，并施加温度场和系统噪声
+**数据集文件命名**：
+- `uwfbg_dataset.npz` - 原始仿真数据
+- `dataset_a_phase1.npz` - Phase1 数据集
+- `dataset_b_phase3.npz` - Phase3 数据集
+- `dataset_c_phase4a.npz` - Phase4 阵列数据集
 
-│   ├── model\_pinn.py       # 负责核心架构：定义那 8 层 1D CNN 的结构，以及自定义的物理约束 Loss 函数
+---
 
-│   ├── train.py            # 负责炼丹：加载数据，定义优化器，执行 epoch 循环并保存最佳权重
+### 3. `scripts/` - 脚本目录
 
-│   ├── evaluate.py         # 负责出成果：加载测试集，对比 PINN 和传统算法(Baseline)，生成关键指标(RMSE, R²)
+**分类存放规则**：
 
-│   └── utils.py            # 存放杂物：比如传统互相关寻峰算法的对比函数，或者画图的脚本
+| 子目录 | 存放内容 | 示例文件 |
+|--------|----------|----------|
+| `scripts/figures/` | 画图脚本（生成论文图表） | `generate_fig*.py` |
+| `scripts/analysis/` | 分析脚本（数据处理、结果汇总） | `finalize_*.py` |
 
-│
+**画图脚本命名规范**：
+```
+scripts/figures/
+├── generate_fig1_system_overview.py
+├── generate_fig3_raw_spectrum.py
+├── generate_fig4_spectrum_distortion_refined.py
+├── generate_fig5_dataset_construction.py
+├── generate_fig6_training_curve.py
+├── generate_fig7_model_influence.py
+├── generate_fig8_main_results.py
+├── generate_fig9_ablation_*.py
+└── generate_distortion_robustness_figure.py
+```
 
-├── results/                # 产出目录
+---
 
-│   ├── figures/            # 存放直接能往论文里贴的高清对比图
+### 4. `config/` - 配置文件目录
 
-│   └── models/             # 存放训练好的 .pth 权重文件
+```
+config/
+├── config.yaml         # 数据生成配置
+├── phase1.yaml        # Phase1 配置
+├── phase2.yaml        # Phase2 配置
+├── phase3.yaml        # Phase3 配置
+├── phase4a.yaml       # Phase4 配置
+└── phase4_array.yaml  # 阵列配置
+```
 
-│
+---
 
-├── requirements.txt        # 记录环境依赖 (torch, numpy, matplotlib, scipy等)
+## 🚀 快速开始
 
-└── README.md 
-│              # 项目说明 (可以把我们讨论的论文 Story 记在这里)
-├── check/                # 中间阶段产出目录
+### 1. 生成仿真数据
+```bash
+python src/core/data_generation.py
+```
 
-│   ├── results/            # 存放直接能往论文里贴的高清对比图
+### 2. 训练模型
+```bash
+# Phase3 训练示例
+python src/phase3/run_cnn_dilated_se.py
+```
 
-│   └── scrips/             # 存放测试脚本
+### 3. 生成图表
+```bash
+# 运行画图脚本
+python scripts/figures/generate_fig8_main_results.py
+```
 
-文件规范化存储，按照注释内容将相应的文件放入对应的文件夹
+---
+
+## 📊 各 Phase 说明
+
+| Phase | 目录 | 主要内容 |
+|-------|------|----------|
+| Phase1 | `src/phase1/` | 数据处理流水线，构建基础数据集 |
+| Phase2 | `src/phase2/` | 基线方法对比（MLP、CNN1D、互相关、参数拟合） |
+| Phase3 | `src/phase3/` | 鲁棒CNN模型训练（加噪、畸变数据） |
+| Phase4 | `src/phase4a/` | FBG阵列解调应用验证 |
+
+---
+
+## ⚠️ 注意事项
+
+1. **不要在根目录放置任何代码文件** - 所有代码必须放在 `src/` 目录下
+2. **结果文件必须分类存放** - 模型、数据、图表、指标分别放在对应子目录
+3. **保持目录整洁** - 删除空的文件夹，不要留下临时文件
+4. **脚本命名规范** - 画图脚本使用 `generate_fig*.py` 命名格式
+
+---
+
+## 📞 联系方式
+
+如有问题，请联系项目维护者。
