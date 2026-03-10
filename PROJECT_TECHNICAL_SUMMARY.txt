@@ -1,0 +1,136 @@
+OFDR_PINN_Demodulation 项目技术总结
+更新时间：2026-03-09
+
+========================================
+1) 项目当前技术路线
+========================================
+- 任务：对全同 UWBFG 阵列局部谱进行解调，回归目标光栅的波长漂移 Delta-lambda（nm）。
+- 总体链路：阵列光谱仿真 -> 局部窗提取与畸变注入 -> 模型/传统方法解调 -> 指标评估（RMSE/MAE/R2）。
+- 当前论文主线模型：CNN+SE（1D CNN + Squeeze-and-Excitation）。
+
+
+========================================
+2) 仿真波形与数据构建参数（当前主配置）
+========================================
+配置来源：
+- config/phase4a.yaml
+- config/phase4_array.yaml
+- src/phase4a/array_simulator.py
+- src/phase4a/local_window.py
+- src/phase4a/generate_dataset_phase4a.py
+
+2.1 阵列与谱线基础参数
+- n_gratings = 5（全同阵列，目标为第 3 个，index=2）
+- 中心波长 lambda0 = 1550.0 nm
+- 单栅谱线模型：Gaussian
+  R(lambda) = A * exp(-0.5 * ((lambda-center)/sigma)^2)
+- 基础谱宽 linewidth_sigma = 0.08 nm
+- 基础幅值 amplitude = 1.0
+- 波长采样范围：1549.0 ~ 1551.0 nm
+- 输入点数：512（即网络输入长度固定为 512）
+
+2.2 标签与扰动设置
+- 目标栅漂移范围：Delta-lambda_target in [-0.2, 0.8] nm
+- 邻居栅漂移：Delta-lambda_neighbors = 0.0（默认固定）
+
+2.3 局部畸变机制（已实现）
+- 目标窗随机偏移：[-0.02, +0.02] nm
+- 邻居数量随机：neighbor_mode_options = [2, 4]
+- 邻居泄漏非对称随机：
+  - 一阶左邻：0.15 ~ 0.55
+  - 一阶右邻：0.15 ~ 0.55
+  - 二阶左邻：0.05 ~ 0.25
+  - 二阶右邻：0.05 ~ 0.25
+- 每个光栅的幅值与谱宽随机缩放：
+  - amplitude_scale: 0.90 ~ 1.10
+  - linewidth_scale: 0.90 ~ 1.10
+- 平滑低频随机基线：
+  - baseline_offset: -0.02 ~ 0.02
+  - 低频分量数：2 ~ 4
+  - 分量幅值：0.003 ~ 0.020
+  - 频率范围：0.3 ~ 2.0（归一化坐标）
+- 加性高斯噪声：noise_std = 0.005
+- 归一化：minmax_per_sample
+- 约束：clip_to_nonnegative = true
+
+2.4 数据规模与划分
+- 总样本数：8000
+- 划分：train/val/test = 0.70/0.15/0.15
+  - train = 5600
+  - val = 1200
+  - test = 1200
+- 随机种子：seed = 42（数据生成主种子）
+
+
+========================================
+3) Baseline 与当前模型
+========================================
+3.1 统一对比方法（当前主实验）
+- Cross-correlation
+- Parametric fitting
+- MLP
+- CNN（baseline）
+- CNN+SE（当前主模型）
+
+3.2 架构演化（Phase3）
+- 做过结构鲁棒性验证：baseline / dilated / SE / dilated+SE
+- 最终用于主线与论文图的网络：CNN+SE
+
+3.3 训练设置（主实验统一设置）
+- batch_size = 128
+- learning_rate = 1e-3
+- epochs = 45
+- early stopping patience = 10
+
+
+========================================
+4) 最新结果（截至当前文件）
+========================================
+4.1 Step2 多随机种子汇总（results/paper_results_step2/final/multiseed_summary.csv）
+单位：nm（MAE/RMSE）
+
+- Cross-correlation: MAE=0.137153, RMSE=0.260904, R2=0.203566
+- Parametric fitting: MAE=0.098739, RMSE=0.211443, R2=0.476911
+- MLP: MAE=0.006554±0.000388, RMSE=0.009452±0.000284, R2=0.998954±0.000063
+- CNN: MAE=0.005296±0.000232, RMSE=0.008469±0.000191, R2=0.999160±0.000038
+- CNN+SE: MAE=0.005077±0.000195, RMSE=0.008367±0.000145, R2=0.999181±0.000028
+
+结论：
+- 传统方法明显落后于深度学习方法。
+- CNN+SE 相比 CNN 存在小幅但稳定优势（误差均值更低、seed 波动更小）。
+
+4.2 阵列对比快照（results/phase4_array_metrics.csv，单次运行）
+- Cross-correlation: RMSE=0.260904, MAE=0.137153, R2=0.203566
+- Parametric fitting: RMSE=0.211443, MAE=0.098739, R2=0.476911
+- MLP: RMSE=0.009658, MAE=0.006742, R2=0.998909
+- CNN: RMSE=0.008320, MAE=0.005160, R2=0.999190
+- CNN+SE: RMSE=0.008238, MAE=0.004921, R2=0.999206
+
+4.3 畸变鲁棒性图结论（results/paper_figures/FigX_distortion_robustness_summary.json）
+- low-distortion 下传统方法可工作：true
+- 高 leakage 退化倍率：
+  - Cross-correlation: 35.38
+  - Parametric fitting: 35.29
+  - CNN: 20.58
+  - CNN+SE: 18.07
+- 高畸变平均 RMSE：
+  - CNN: 0.15896
+  - CNN+SE: 0.15704
+- CNN+SE 对 CNN 的优势：存在但幅度较小（stable_advantage=true）
+- supports_main_claim=false（说明“鲁棒性主结论”目前是部分支持，仍需继续加强实验说服力）
+
+
+========================================
+5) 当前工程状态与注意事项
+========================================
+- 主要模型权重已存在：results/models/phase3/cnn_se/model.pt（及其它基线模型）。
+- 论文图脚本与结果已大量生成（results/paper_figures/ 下）。
+- 结果文件显示主实验使用数据路径为：
+  D:\FBG\OFDR_PINN_Demodulation\data\processed\dataset_b_array.npz
+- 但当前 data/ 目录下未检索到可见数据文件；建议后续做一次数据文件完整性核对（避免复现实验时路径失配）。
+
+
+========================================
+6) 一句话总结
+========================================
+当前项目已完成“全同 UWBFG 阵列局部畸变数据 + 传统方法 + 深度学习方法”的统一对比，CNN+SE 是当前最优主模型；在强畸变区间表现优于 CNN，但优势不大，后续应继续加强鲁棒性验证与公平性实验来支撑最终论文结论。
