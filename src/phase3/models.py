@@ -77,7 +77,8 @@ class ConvRegressor(nn.Module):
         return self.head(x).squeeze(-1)
 
 
-def build_model(method_key: str, input_dim: int) -> nn.Module:
+def build_model(method_key: str, input_dim: int, model_cfg: dict | None = None) -> nn.Module:
+    _ = model_cfg
     if method_key == "cnn_baseline":
         return ConvRegressor(input_dim=input_dim, use_dilation=False, use_se=False)
     if method_key == "cnn_dilated":

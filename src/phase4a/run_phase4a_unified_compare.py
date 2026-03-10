@@ -55,6 +55,53 @@ def load_phase4a_dataset(cfg: dict) -> dict:
     }
 
 
+def _gaussian_kernel1d(sigma_points: float) -> np.ndarray:
+    sigma = float(max(1e-6, sigma_points))
+    radius = int(max(1, round(4.0 * sigma)))
+    x = np.arange(-radius, radius + 1, dtype=np.float64)
+    k = np.exp(-0.5 * (x / sigma) ** 2)
+    k /= np.sum(k)
+    return k
+
+
+def _conv1d_same(y: np.ndarray, kernel: np.ndarray) -> np.ndarray:
+    return np.convolve(y, kernel, mode="same")
+
+
+def preprocess_spectra(x: np.ndarray, cfg: dict) -> np.ndarray:
+    pcfg = cfg.get("signal_processing", {})
+    if not bool(pcfg.get("enabled", False)):
+        return x
+
+    baseline_sigma = float(pcfg.get("baseline_sigma_points", 18.0))
+    denoise_sigma = float(pcfg.get("denoise_sigma_points", 1.0))
+    base_strength = float(pcfg.get("baseline_subtract_strength", 1.0))
+    edge_alpha = float(pcfg.get("edge_enhance_alpha", 0.0))
+    p_low = float(pcfg.get("p_low", 1.0))
+    p_high = float(pcfg.get("p_high", 99.0))
+
+    k_base = _gaussian_kernel1d(baseline_sigma)
+    k_denoise = _gaussian_kernel1d(denoise_sigma)
+    out = np.zeros_like(x, dtype=np.float32)
+
+    for i in range(x.shape[0]):
+        y = x[i].astype(np.float64)
+        baseline = _conv1d_same(y, k_base)
+        y_det = y - base_strength * baseline
+        y_smooth = _conv1d_same(y_det, k_denoise)
+        if abs(edge_alpha) > 1e-15:
+            y_proc = y_smooth + edge_alpha * (y_det - y_smooth)
+        else:
+            y_proc = y_smooth
+
+        lo = float(np.percentile(y_proc, p_low))
+        hi = float(np.percentile(y_proc, p_high))
+        y_proc = (y_proc - lo) / (hi - lo + 1e-12)
+        y_proc = np.clip(y_proc, 0.0, 1.0)
+        out[i] = y_proc.astype(np.float32)
+    return out
+
+
 def run_cross_correlation(ds: dict, cfg: dict) -> np.ndarray:
     wl = ds["wavelengths"]
     step_nm = float(wl[1] - wl[0])
@@ -90,8 +137,9 @@ def run_parametric_fitting(ds: dict, cfg: dict) -> np.ndarray:
 
 def run_neural(ds: dict, cfg: dict, model_key: str, seed_offset: int) -> np.ndarray:
     set_seed(int(cfg["phase4a"]["seed"]) + seed_offset)
+    x_used = ds["x_proc"] if "x_proc" in ds else ds["x"]
     train_loader, val_loader = make_loaders(
-        ds["x"],
+        x_used,
         ds["y"],
         ds["idx_train"],
         ds["idx_val"],
@@ -107,7 +155,7 @@ def run_neural(ds: dict, cfg: dict, model_key: str, seed_offset: int) -> np.ndar
         raise ValueError(f"Unsupported model_key: {model_key}")
 
     model = train_model(model, train_loader, val_loader, cfg["train"], device)
-    return predict(model, ds["x"], ds["idx_test"], device)
+    return predict(model, x_used, ds["idx_test"], device)
 
 
 def metric_row(name: str, y_true: np.ndarray, y_pred: np.ndarray) -> dict:
@@ -161,6 +209,7 @@ def main() -> None:
     args = parse_args()
     cfg = load_config(args.config)
     ds = load_phase4a_dataset(cfg)
+    ds["x_proc"] = preprocess_spectra(ds["x"], cfg)
     y_true = ds["y"][ds["idx_test"]]
 
     set_seed(int(cfg["phase4a"]["seed"]))
@@ -194,4 +243,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

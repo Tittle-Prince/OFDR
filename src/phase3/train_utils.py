@@ -25,7 +25,7 @@ def make_loaders(
 
 def train_model(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader, cfg_train: dict, device: torch.device) -> nn.Module:
     lr = float(cfg_train["lr"])
-    wd = float(cfg_train["weight_decay"])
+    wd = float(cfg_train.get("weight_decay", 0.0))
     epochs = int(cfg_train["epochs"])
     patience = int(cfg_train["patience"])
 

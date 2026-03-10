@@ -152,9 +152,34 @@ compare:
   fit_window_points: 61
   baseline_percentile: 10.0
 
+signal_processing:
+  enabled: true
+  baseline_sigma_points: 28.0
+  denoise_sigma_points: 0.90
+  baseline_subtract_strength: 0.35
+  edge_enhance_alpha: 0.00
+  p_low: 0.5
+  p_high: 99.5
+
 train:
   batch_size: 128
   lr: 0.001
   weight_decay: 0.0
   epochs: 55
   patience: 12
+
+physics_train:
+  lr: 0.0008
+  weight_decay: 0.00001
+  epochs: 65
+  patience: 14
+  alpha_prior: 0.10
+  beta_temp: 0.08
+  k_t_nm_per_c: 0.01
+  prior_beta: 0.015
+  disagreement_tau_nm: 0.03
+  coarse_pf_weight: 0.75
+  grad_clip: 1.0
+  conf_gate: 0.55
+  conf_power: 2.0
+  prior_warmup_epochs: 14
