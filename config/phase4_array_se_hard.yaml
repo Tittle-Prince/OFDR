@@ -1,0 +1,160 @@
+phase4a:
+  seed: 42
+  dataset_path: "data/processed/dataset_b_array_se_hard.npz"
+  results_dir: "results/phase4_array_se_hard"
+
+array:
+  n_gratings: 5
+  target_index: 2
+  lambda0_nm: 1550.0
+  linewidth_sigma_nm: 0.08
+  amplitude: 1.0
+  wavelength_start_nm: 1549.0
+  wavelength_end_nm: 1551.0
+  num_points: 512
+
+array_random:
+  amplitude_scale_min: 0.80
+  amplitude_scale_max: 1.20
+  linewidth_scale_min: 0.82
+  linewidth_scale_max: 1.22
+
+label:
+  delta_lambda_target_min_nm: -0.2
+  delta_lambda_target_max_nm: 0.8
+  delta_lambda_neighbors_nm: 0.0
+
+  neighbor_shift_mode: "random_per_neighbor"
+  neighbor_delta_lambda_min_nm: -0.18
+  neighbor_delta_lambda_max_nm: 0.18
+  neighbor_target_coupling: 0.25
+  neighbor_jitter_min_nm: -0.03
+  neighbor_jitter_max_nm: 0.03
+
+local_window:
+  center_weight: 1.0
+  first_neighbor_weight: 0.35
+  second_neighbor_weight: 0.15
+  additive_noise_std: 0.008
+  additive_noise_std_min: 0.003
+  additive_noise_std_max: 0.030
+  normalize: "minmax_per_sample"
+  clip_to_nonnegative: true
+
+  target_window_shift_min_nm: -0.06
+  target_window_shift_max_nm: 0.06
+  neighbor_mode_options: [2, 4]
+
+  first_neighbor_left_weight_min: 0.08
+  first_neighbor_left_weight_max: 0.75
+  first_neighbor_right_weight_min: 0.08
+  first_neighbor_right_weight_max: 0.75
+
+  second_neighbor_left_weight_min: 0.02
+  second_neighbor_left_weight_max: 0.38
+  second_neighbor_right_weight_min: 0.02
+  second_neighbor_right_weight_max: 0.38
+
+  leakage_global_scale_min: 0.70
+  leakage_global_scale_max: 1.50
+  leakage_left_right_tilt_min: -0.35
+  leakage_left_right_tilt_max: 0.35
+
+  baseline_offset_min: -0.05
+  baseline_offset_max: 0.05
+  baseline_num_components_min: 3
+  baseline_num_components_max: 6
+  baseline_component_amp_min: 0.005
+  baseline_component_amp_max: 0.050
+  baseline_freq_min: 0.2
+  baseline_freq_max: 3.5
+
+  hf_ripple_amp_min: 0.0
+  hf_ripple_amp_max: 0.030
+  hf_ripple_freq_min: 7.0
+  hf_ripple_freq_max: 30.0
+  hf_ripple_phase_min: 0.0
+  hf_ripple_phase_max: 6.283185307179586
+
+  colored_noise_std_min: 0.0
+  colored_noise_std_max: 0.020
+  colored_noise_smooth_points_min: 4.0
+  colored_noise_smooth_points_max: 24.0
+
+  dropout_prob: 0.35
+  dropout_count_min: 1
+  dropout_count_max: 3
+  dropout_width_points_min: 4.0
+  dropout_width_points_max: 28.0
+  dropout_depth_min: 0.10
+  dropout_depth_max: 0.65
+
+  impulse_prob: 0.25
+  impulse_count_min: 1
+  impulse_count_max: 5
+  impulse_amp_min: 0.01
+  impulse_amp_max: 0.10
+
+  instrument_blur_sigma_points_min: 0.0
+  instrument_blur_sigma_points_max: 2.2
+
+  gain_min: 0.75
+  gain_max: 1.35
+  post_bias_min: -0.03
+  post_bias_max: 0.03
+  gamma_min: 0.85
+  gamma_max: 1.25
+  saturation_level_min: 0.85
+  saturation_level_max: 2.50
+
+se_regimes:
+  - name: "baseline_dominant"
+    prob: 0.25
+    baseline_scale: 1.8
+    noise_scale: 0.8
+    leakage_scale: 1.1
+    blur_scale: 1.2
+
+  - name: "leakage_dominant"
+    prob: 0.25
+    leakage_scale: 1.9
+    noise_scale: 0.9
+    shift_scale: 1.2
+    neighbor_shift_scale: 1.4
+
+  - name: "noise_dominant"
+    prob: 0.25
+    leakage_scale: 0.9
+    noise_scale: 1.9
+    colored_noise_scale: 2.0
+    impulse_scale: 1.8
+    dropout_scale: 1.3
+
+  - name: "mixed_extreme"
+    prob: 0.25
+    leakage_scale: 1.6
+    noise_scale: 1.5
+    baseline_scale: 1.5
+    ripple_scale: 1.6
+    blur_scale: 1.5
+    dropout_scale: 1.5
+    impulse_scale: 1.5
+    shift_scale: 1.4
+    neighbor_shift_scale: 1.5
+
+dataset:
+  num_samples: 12000
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+
+compare:
+  fit_window_points: 61
+  baseline_percentile: 10.0
+
+train:
+  batch_size: 128
+  lr: 0.001
+  weight_decay: 0.0
+  epochs: 55
+  patience: 12

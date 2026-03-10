@@ -48,13 +48,20 @@ def load_cfg(config_path: Path) -> dict:
         return yaml.safe_load(f)
 
 
-def detect_dataset_path() -> Path:
-    cands = [
-        PROJECT_ROOT / "data" / "processed" / "dataset_c_final.npz",
-        PROJECT_ROOT / "data" / "processed" / "dataset_b_array.npz",
-        PROJECT_ROOT / "data" / "processed" / "dataset_c_phase4a.npz",
-        PROJECT_ROOT / "data" / "processed" / "dataset_b_phase3.npz",
-    ]
+def detect_dataset_path(cfg: dict) -> Path:
+    cands = []
+    cfg_ds = cfg.get("phase4a", {}).get("dataset_path")
+    if cfg_ds:
+        cands.append(PROJECT_ROOT / str(cfg_ds))
+    cands.extend(
+        [
+            PROJECT_ROOT / "data" / "processed" / "dataset_c_final.npz",
+            PROJECT_ROOT / "data" / "processed" / "dataset_b_array_se_hard.npz",
+            PROJECT_ROOT / "data" / "processed" / "dataset_b_array.npz",
+            PROJECT_ROOT / "data" / "processed" / "dataset_c_phase4a.npz",
+            PROJECT_ROOT / "data" / "processed" / "dataset_b_phase3.npz",
+        ]
+    )
     for p in cands:
         if p.exists():
             return p
@@ -388,7 +395,7 @@ def main() -> None:
     raw_dir.mkdir(parents=True, exist_ok=True)
 
     cfg = load_cfg(PROJECT_ROOT / args.config)
-    dataset_path = detect_dataset_path()
+    dataset_path = detect_dataset_path(cfg)
     ds = load_dataset(dataset_path, cfg)
     y_true = ds["y"][ds["idx_test"]]
 
@@ -502,4 +509,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

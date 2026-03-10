@@ -23,6 +23,7 @@ def simulate_identical_array_spectra(
     delta_lambda_target_nm: float,
     amplitude_scales: np.ndarray | None = None,
     linewidth_scales: np.ndarray | None = None,
+    neighbor_delta_lambdas_nm: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     arr = cfg["array"]
     label = cfg["label"]
@@ -38,6 +39,11 @@ def simulate_identical_array_spectra(
 
     neighbor_shift = float(label["delta_lambda_neighbors_nm"])
     centers = np.full(n_gratings, lambda0 + neighbor_shift, dtype=np.float64)
+    if neighbor_delta_lambdas_nm is not None:
+        shifts = np.asarray(neighbor_delta_lambdas_nm, dtype=np.float64).reshape(-1)
+        if len(shifts) != n_gratings:
+            raise ValueError("neighbor_delta_lambdas_nm must have shape (n_gratings,)")
+        centers = lambda0 + shifts
     centers[target_index] = lambda0 + float(delta_lambda_target_nm)
 
     if amplitude_scales is None:
