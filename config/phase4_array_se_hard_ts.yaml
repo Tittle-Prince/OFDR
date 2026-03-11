@@ -1,0 +1,58 @@
+phase4ts:
+  seed: 4207
+  source_config: "config/phase4_array_se_hard.yaml"
+  dataset_path: "data/processed/dataset_b_array_se_hard_ts.npz"
+  results_dir: "results/phase4_array_se_hard_ts"
+
+dataset_ts:
+  num_trajectories: 150
+  trajectory_length: 96
+  train_ratio: 0.70
+  val_ratio: 0.15
+  test_ratio: 0.15
+  use_se_regimes: true
+  regime_stay_prob: 0.92
+
+  dynamics:
+    dlambda_init_min_nm: -0.20
+    dlambda_init_max_nm: 0.80
+    velocity_std_nm: 0.0018
+    velocity_rho: 0.92
+    jump_prob: 0.015
+    jump_min_nm: -0.020
+    jump_max_nm: 0.020
+    clip_min_nm: -0.22
+    clip_max_nm: 0.82
+
+    window_shift_rw_std_nm: 0.0040
+    neighbor_rw_std_nm: 0.0030
+    amp_rw_std: 0.015
+    linewidth_rw_std: 0.012
+    leakage_rw_std: 0.030
+
+train_single:
+  batch_size: 256
+  lr: 0.001
+  weight_decay: 0.0
+  epochs: 30
+  patience: 8
+
+kalman:
+  q_scale: 0.01
+  r_scale: 0.25
+
+train_gru:
+  window: 32
+  hidden: 64
+  num_layers: 2
+  dropout: 0.10
+  batch_size: 128
+  lr: 0.0008
+  weight_decay: 0.00001
+  epochs: 35
+  patience: 8
+  huber_beta: 0.01
+  grad_clip: 1.0
+  tail_percentile: 85.0
+  tail_weight: 0.40
+
