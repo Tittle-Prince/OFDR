@@ -22,6 +22,61 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _sample_neighbor_delta_lambdas(
+    cfg_label: dict,
+    n_gratings: int,
+    target_index: int,
+    delta_lambda_target_nm: float,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    # Backward-compatible default: fixed neighbor centers.
+    base = float(cfg_label.get("delta_lambda_neighbors_nm", 0.0))
+    out = np.full(n_gratings, base, dtype=np.float64)
+
+    has_lr = all(
+        k in cfg_label
+        for k in [
+            "delta_lambda_neighbor_left_min_nm",
+            "delta_lambda_neighbor_left_max_nm",
+            "delta_lambda_neighbor_right_min_nm",
+            "delta_lambda_neighbor_right_max_nm",
+        ]
+    )
+    has_uniform = all(
+        k in cfg_label
+        for k in [
+            "delta_lambda_neighbors_min_nm",
+            "delta_lambda_neighbors_max_nm",
+        ]
+    )
+
+    if has_lr:
+        lmin = float(cfg_label["delta_lambda_neighbor_left_min_nm"])
+        lmax = float(cfg_label["delta_lambda_neighbor_left_max_nm"])
+        rmin = float(cfg_label["delta_lambda_neighbor_right_min_nm"])
+        rmax = float(cfg_label["delta_lambda_neighbor_right_max_nm"])
+        if lmax < lmin:
+            lmax = lmin
+        if rmax < rmin:
+            rmax = rmin
+        for i in range(n_gratings):
+            if i < target_index:
+                out[i] = float(rng.uniform(lmin, lmax))
+            elif i > target_index:
+                out[i] = float(rng.uniform(rmin, rmax))
+    elif has_uniform:
+        nmin = float(cfg_label["delta_lambda_neighbors_min_nm"])
+        nmax = float(cfg_label["delta_lambda_neighbors_max_nm"])
+        if nmax < nmin:
+            nmax = nmin
+        for i in range(n_gratings):
+            if i != target_index:
+                out[i] = float(rng.uniform(nmin, nmax))
+
+    out[target_index] = float(delta_lambda_target_nm)
+    return out
+
+
 def main() -> None:
     args = parse_args()
     cfg = load_config(args.config)
@@ -48,12 +103,14 @@ def main() -> None:
     window_shift_all = np.zeros(n_samples, dtype=np.float32)
     amp_scales_all = np.zeros((n_samples, n_gratings), dtype=np.float32)
     sigma_scales_all = np.zeros((n_samples, n_gratings), dtype=np.float32)
+    neighbor_delta_all = np.zeros((n_samples, n_gratings), dtype=np.float32)
 
     arr_rand = cfg.get("array_random", {})
     amp_min = float(arr_rand.get("amplitude_scale_min", 1.0))
     amp_max = float(arr_rand.get("amplitude_scale_max", 1.0))
     sig_min = float(arr_rand.get("linewidth_scale_min", 1.0))
     sig_max = float(arr_rand.get("linewidth_scale_max", 1.0))
+    label_cfg = cfg.get("label", {})
 
     lw = cfg["local_window"]
     shift_min = float(lw.get("target_window_shift_min_nm", 0.0))
@@ -63,12 +120,20 @@ def main() -> None:
         dlam = float(rng.uniform(dmin, dmax))
         amp_scales = rng.uniform(amp_min, amp_max, size=n_gratings).astype(np.float64)
         sigma_scales = rng.uniform(sig_min, sig_max, size=n_gratings).astype(np.float64)
+        neighbor_deltas = _sample_neighbor_delta_lambdas(
+            cfg_label=label_cfg,
+            n_gratings=n_gratings,
+            target_index=target_index,
+            delta_lambda_target_nm=dlam,
+            rng=rng,
+        )
         per_grating, total, centers = simulate_identical_array_spectra(
             wavelengths,
             cfg,
             dlam,
             amplitude_scales=amp_scales,
             linewidth_scales=sigma_scales,
+            neighbor_delta_lambdas_nm=neighbor_deltas,
         )
 
         weights, mode = sample_leakage_weights(n_gratings, target_index, lw, rng)
@@ -92,6 +157,7 @@ def main() -> None:
         window_shift_all[i] = np.float32(window_shift)
         amp_scales_all[i] = amp_scales.astype(np.float32)
         sigma_scales_all[i] = sigma_scales.astype(np.float32)
+        neighbor_delta_all[i] = neighbor_deltas.astype(np.float32)
 
     tr = float(cfg["dataset"]["train_ratio"])
     vr = float(cfg["dataset"]["val_ratio"])
@@ -120,6 +186,7 @@ def main() -> None:
         window_shift_nm=window_shift_all,
         amplitude_scales=amp_scales_all,
         linewidth_scales=sigma_scales_all,
+        neighbor_delta_lambdas_nm=neighbor_delta_all,
         idx_train=idx_train.astype(np.int64),
         idx_val=idx_val.astype(np.int64),
         idx_test=idx_test.astype(np.int64),
