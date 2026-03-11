@@ -1,0 +1,83 @@
+phase4a:
+  seed: 42
+  dataset_path: "data/processed/dataset_c_phase4a_spike_l3.npz"
+  results_dir: "results/phase4a_spike_l3"
+
+array:
+  n_gratings: 5
+  target_index: 2
+  lambda0_nm: 1550.0
+  linewidth_sigma_nm: 0.08
+  amplitude: 1.0
+  wavelength_start_nm: 1549.0
+  wavelength_end_nm: 1551.0
+  num_points: 512
+
+array_random:
+  amplitude_scale_min: 0.90
+  amplitude_scale_max: 1.10
+  linewidth_scale_min: 0.90
+  linewidth_scale_max: 1.10
+
+label:
+  delta_lambda_target_min_nm: -0.2
+  delta_lambda_target_max_nm: 0.8
+  delta_lambda_neighbors_nm: 0.0
+
+local_window:
+  center_weight: 1.0
+  first_neighbor_weight: 0.35
+  second_neighbor_weight: 0.15
+  additive_noise_std: 0.005
+  normalize: "minmax_per_sample"
+  clip_to_nonnegative: true
+
+  target_window_shift_min_nm: -0.02
+  target_window_shift_max_nm: 0.02
+
+  neighbor_mode_options: [2, 4]
+
+  first_neighbor_left_weight_min: 0.15
+  first_neighbor_left_weight_max: 0.55
+  first_neighbor_right_weight_min: 0.15
+  first_neighbor_right_weight_max: 0.55
+
+  second_neighbor_left_weight_min: 0.05
+  second_neighbor_left_weight_max: 0.25
+  second_neighbor_right_weight_min: 0.05
+  second_neighbor_right_weight_max: 0.25
+
+  baseline_offset_min: -0.02
+  baseline_offset_max: 0.02
+  baseline_num_components_min: 2
+  baseline_num_components_max: 4
+  baseline_component_amp_min: 0.003
+  baseline_component_amp_max: 0.020
+  baseline_freq_min: 0.3
+  baseline_freq_max: 2.0
+
+  spike_noise_enable: true
+  spike_noise_num_min: 1
+  spike_noise_num_max: 3
+  spike_noise_amp_min: 0.015
+  spike_noise_amp_max: 0.050
+  spike_noise_width_points_min: 1
+  spike_noise_width_points_max: 3
+
+dataset:
+  num_samples: 8000
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+
+compare:
+  fit_window_points: 61
+  baseline_percentile: 10.0
+
+train:
+  batch_size: 128
+  lr: 0.001
+  weight_decay: 0.0
+  epochs: 45
+  patience: 10
+

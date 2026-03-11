@@ -131,6 +131,160 @@ def generate_smooth_lowfreq_baseline(n_points: int, cfg_local: dict, rng: np.ran
     return baseline
 
 
+def _apply_spike_noise(signal: np.ndarray, cfg_local: dict, rng: np.random.Generator) -> np.ndarray:
+    # Backward-compatible: disabled by default unless explicitly enabled.
+    if not bool(cfg_local.get("spike_noise_enable", False)):
+        return signal
+
+    out = signal.copy()
+    n_points = len(out)
+
+    n_min = int(cfg_local.get("spike_noise_num_min", 0))
+    n_max = int(cfg_local.get("spike_noise_num_max", n_min))
+    if n_max < n_min:
+        n_max = n_min
+    n_spikes = int(rng.integers(n_min, n_max + 1))
+    if n_spikes <= 0:
+        return out
+
+    amp_min = float(cfg_local.get("spike_noise_amp_min", 0.0))
+    amp_max = float(cfg_local.get("spike_noise_amp_max", amp_min))
+    if amp_max < amp_min:
+        amp_max = amp_min
+
+    w_min = int(cfg_local.get("spike_noise_width_points_min", 1))
+    w_max = int(cfg_local.get("spike_noise_width_points_max", w_min))
+    if w_max < w_min:
+        w_max = w_min
+    w_min = max(1, w_min)
+    w_max = max(1, w_max)
+
+    for _ in range(n_spikes):
+        pos = int(rng.integers(0, n_points))
+        amp = float(rng.uniform(amp_min, amp_max))
+        sign = -1.0 if float(rng.uniform(0.0, 1.0)) < 0.5 else 1.0
+        width = int(rng.integers(w_min, w_max + 1))
+
+        left = int(max(0, pos - width // 2))
+        right = int(min(n_points, left + width))
+        if right <= left:
+            continue
+
+        span = right - left
+        if span == 1:
+            out[left] += sign * amp
+        else:
+            shape = np.hanning(span + 2)[1:-1]
+            shape = shape / (float(np.max(shape)) + 1e-12)
+            out[left:right] += sign * amp * shape
+    return out
+
+
+def _sample_sign(cfg_local: dict, key: str, rng: np.random.Generator) -> float:
+    mode = str(cfg_local.get(key, "both")).lower()
+    if mode == "positive":
+        return 1.0
+    if mode == "negative":
+        return -1.0
+    return -1.0 if float(rng.uniform(0.0, 1.0)) < 0.5 else 1.0
+
+
+def _artifact_region_bounds(signal: np.ndarray, cfg_local: dict) -> tuple[int, int]:
+    n_points = len(signal)
+    mode = str(cfg_local.get("targeted_artifact_region_mode", "center_band")).lower()
+
+    if mode == "target_peak_nearby":
+        center = int(np.argmax(signal))
+        half = int(cfg_local.get("targeted_artifact_peak_half_window_points", max(10, n_points // 32)))
+        left = max(0, center - half)
+        right = min(n_points, center + half + 1)
+        if right - left >= 3:
+            return left, right
+
+    left_ratio = float(cfg_local.get("targeted_artifact_region_left_ratio", 0.35))
+    right_ratio = float(cfg_local.get("targeted_artifact_region_right_ratio", 0.65))
+    left = int(np.floor(np.clip(left_ratio, 0.0, 1.0) * n_points))
+    right = int(np.ceil(np.clip(right_ratio, 0.0, 1.0) * n_points))
+    left = max(0, min(left, n_points - 1))
+    right = max(left + 2, min(right, n_points))
+    return left, right
+
+
+def _apply_targeted_artifacts(signal: np.ndarray, cfg_local: dict, rng: np.random.Generator) -> np.ndarray:
+    # Backward-compatible: disabled by default unless explicitly enabled.
+    if not bool(cfg_local.get("targeted_artifact_enable", False)):
+        return signal
+
+    out = signal.copy()
+    n_min = int(cfg_local.get("targeted_artifact_num_min", 0))
+    n_max = int(cfg_local.get("targeted_artifact_num_max", n_min))
+    if n_max < n_min:
+        n_max = n_min
+    n_art = int(rng.integers(n_min, n_max + 1))
+    if n_art <= 0:
+        return out
+
+    amp_min = float(cfg_local.get("targeted_artifact_amp_min", 0.01))
+    amp_max = float(cfg_local.get("targeted_artifact_amp_max", amp_min))
+    if amp_max < amp_min:
+        amp_max = amp_min
+
+    w_min = int(cfg_local.get("targeted_artifact_width_points_min", 1))
+    w_max = int(cfg_local.get("targeted_artifact_width_points_max", w_min))
+    if w_max < w_min:
+        w_max = w_min
+    w_min = max(1, w_min)
+    w_max = max(1, w_max)
+
+    region_l, region_r = _artifact_region_bounds(signal, cfg_local)
+    if region_r - region_l < 2:
+        return out
+
+    idx = np.arange(len(out), dtype=np.float64)
+    for _ in range(n_art):
+        c = int(rng.integers(region_l, region_r))
+        amp = float(rng.uniform(amp_min, amp_max))
+        sign = _sample_sign(cfg_local, "targeted_artifact_sign_mode", rng)
+        width = int(rng.integers(w_min, w_max + 1))
+
+        # Narrow Gaussian bump to mimic local burr/spur around key region.
+        sigma = max(0.5, 0.5 * float(width))
+        g = np.exp(-0.5 * ((idx - float(c)) / sigma) ** 2)
+        g /= float(np.max(g)) + 1e-12
+        out += sign * amp * g
+    return out
+
+
+def _apply_hf_ripple(signal: np.ndarray, cfg_local: dict, rng: np.random.Generator) -> np.ndarray:
+    # Backward-compatible: disabled by default unless explicitly enabled.
+    if not bool(cfg_local.get("hf_ripple_enable", False)):
+        return signal
+
+    amp_min = float(cfg_local.get("hf_ripple_amp_min", 0.0))
+    amp_max = float(cfg_local.get("hf_ripple_amp_max", amp_min))
+    if amp_max < amp_min:
+        amp_max = amp_min
+    amp = float(rng.uniform(amp_min, amp_max))
+    if amp <= 0.0:
+        return signal
+
+    f_min = float(cfg_local.get("hf_ripple_freq_min", 8.0))
+    f_max = float(cfg_local.get("hf_ripple_freq_max", f_min))
+    if f_max < f_min:
+        f_max = f_min
+    freq = float(rng.uniform(f_min, f_max))
+
+    phase_random = bool(cfg_local.get("hf_ripple_phase_random", True))
+    if phase_random:
+        phase = float(rng.uniform(0.0, 2.0 * np.pi))
+    else:
+        phase = float(cfg_local.get("hf_ripple_phase", 0.0))
+
+    x = np.linspace(0.0, 1.0, len(signal), dtype=np.float64)
+    ripple = amp * np.sin(2.0 * np.pi * freq * x + phase)
+    return signal + ripple
+
+
 def apply_local_effects(
     local_clean: np.ndarray,
     cfg_local: dict,
@@ -145,6 +299,9 @@ def apply_local_effects(
     baseline = generate_smooth_lowfreq_baseline(signal.shape[0], cfg_local, rng)
     noise_std = float(cfg_local["additive_noise_std"])
     noisy = signal + baseline + rng.normal(0.0, noise_std, size=signal.shape[0])
+    noisy = _apply_hf_ripple(noisy, cfg_local, rng)
+    noisy = _apply_spike_noise(noisy, cfg_local, rng)
+    noisy = _apply_targeted_artifacts(noisy, cfg_local, rng)
 
     if bool(cfg_local["clip_to_nonnegative"]):
         noisy = np.clip(noisy, 0.0, None)
