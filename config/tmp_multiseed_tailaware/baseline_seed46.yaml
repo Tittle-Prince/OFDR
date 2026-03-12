@@ -1,0 +1,20 @@
+phase4a:
+  seed: 46
+  dataset_path: data/processed/dataset_c_phase4a_shift004_linewidth_l3.npz
+  results_dir: results/phase4a_shift004_linewidth_l3
+train:
+  batch_size: 128
+  lr: 0.001
+  weight_decay: 0.0
+  epochs: 45
+  patience: 10
+  loss:
+    name: mse
+  hard_weighting:
+    enabled: false
+    tau: 0.01
+    alpha: 1.5
+method_enhance:
+  method_label: CNN
+  results_subdir: method_enhance_tailaware_baseline_seed46
+  seed_cnn_offset: 21
