@@ -1,0 +1,26 @@
+phase4a:
+  seed: 42
+  dataset_path: "data/processed/dataset_c_phase4a_shift004_linewidth_l3.npz"
+  results_dir: "results/phase4a_shift004_linewidth_l3"
+
+train:
+  batch_size: 128
+  lr: 0.001
+  weight_decay: 0.0
+  epochs: 45
+  patience: 10
+
+model:
+  backbone: "cnn"
+  use_refine_module: false
+
+method_c2f:
+  results_subdir: "method_enhance_c2f_refine"
+  seed_cnn_offset: 21
+  seed_c2f_offset: 41
+  refine_window_points: 96
+  alpha_coarse: 0.2
+  refine_channels_1: 16
+  refine_channels_2: 32
+  refine_hidden: 32
+

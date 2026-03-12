@@ -1,0 +1,18 @@
+phase4a:
+  seed: 42
+  dataset_path: "data/processed/dataset_c_phase4a_shift004_linewidth_l3.npz"
+  results_dir: "results/phase4a_shift004_linewidth_l3"
+
+train:
+  batch_size: 128
+  lr: 0.001
+  weight_decay: 0.0
+  epochs: 45
+  patience: 10
+
+method_enhance:
+  results_subdir: "method_enhance_cnn_vs_lightse"
+  se_reduction: 8
+  seed_cnn_offset: 21
+  seed_lightse_offset: 31
+
