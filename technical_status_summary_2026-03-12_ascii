@@ -1,0 +1,142 @@
+OFDR_PINN_Demodulation Technical Status Summary (ASCII)
+Date: 2026-03-12
+
+1) Project objective
+- Task: regress target grating center wavelength shift (delta lambda) from 1D overlapped OFDR/UWFBG spectra.
+- Focus: all-identical UWFBG overlap distortion, including neighbor relative shift, linewidth change, and local artifacts.
+- Primary difficult benchmark currently used in method enhancement: phase4a_shift004_linewidth_l3.
+
+2) Benchmark and evaluation protocol currently in use
+- Dataset path (hardest main case): data/processed/dataset_c_phase4a_shift004_linewidth_l3.npz
+- Main compare output root: results/phase4a_shift004_linewidth_l3/
+- Reported metrics: RMSE, MAE, P95, P99, R2.
+- Fair compare rule (kept in recent runs): same dataset, same epochs/patience, same batch size, same optimizer/scheduler behavior, same CNN backbone unless explicitly testing a new model class.
+
+3) New technical additions completed on 2026-03-12
+
+3.1) New model: minimal CNN + BiLSTM regressor
+- File: src/ofdr/models/phase3_cnn.py
+- New class: CNNBiLSTMRegressor
+- New model key: cnn_bilstm
+- Integration path:
+  - src/ofdr/models/phase3_cnn.py (build_model supports cnn_bilstm)
+  - src/phase3/runner.py (reads model params when method_key == cnn_bilstm)
+  - src/phase3/run_cnn_bilstm.py (entry script)
+  - config/phase3_cnn_bilstm.yaml (minimal config)
+  - config/phase4a_shift004_linewidth_l3_method_bilstm.yaml
+  - src/phase4a/run_method_enhance_cnn_vs_bilstm.py
+- Shape flow in forward:
+  - input: [B, N]
+  - CNN features: [B, C, L]
+  - transpose for LSTM: [B, L, C]
+  - 1-layer bidirectional LSTM output: [B, L, 2H]
+  - mean pool over sequence length: [B, 2H]
+  - linear head: [B]
+- Implementation constraints respected: reuse baseline CNN feature blocks; exactly 1 BiLSTM layer; no attention/transformer.
+
+3.2) New training strategy (no backbone change): tail optimization
+- Core file: src/ofdr/training/phase3_train_utils.py
+- New loss option:
+  - name: tail_aware_l1
+  - formula: L_i = |e_i| + lambda_tail * max(0, |e_i| - tau)^2
+  - defaults used: tau=0.01, lambda_tail=3.0
+- New hard sample weighting option (training only):
+  - formula: w_i = 1 + alpha * I(|e_i| > tau_hard)
+  - weighted per-sample loss: w_i * L_i
+  - defaults used: tau_hard=0.01, alpha=1.5
+- New hardest-case runner:
+  - src/phase4a/run_method_enhance_cnn_tailaware.py
+- New configs:
+  - config/phase4a_shift004_linewidth_l3_method_tailaware_baseline.yaml
+  - config/phase4a_shift004_linewidth_l3_method_tailaware.yaml
+  - config/phase4a_shift004_linewidth_l3_method_tailaware_hard.yaml
+
+4) Latest results on hardest case (phase4a_shift004_linewidth_l3)
+
+4.1) Single-seed reference results
+- CNN baseline:
+  - RMSE=0.01388817, MAE=0.01070953, P95=0.02783730, P99=0.03923561, R2=0.99768269
+  - source: results/phase4a_shift004_linewidth_l3/method_enhance_tailaware_baseline/metrics_table.csv
+- CNN+BiLSTM:
+  - RMSE=0.01443842, MAE=0.01132052, P95=0.02679872, P99=0.04183600, R2=0.99749541
+  - source: results/phase4a_shift004_linewidth_l3/method_enhance_cnn_vs_bilstm/metrics_table.csv
+  - interpretation: P95 improved, but RMSE/MAE/P99 and R2 degraded.
+- CNN+TailAwareLoss:
+  - RMSE=0.01323813, MAE=0.01017639, P95=0.02557017, P99=0.03709696, R2=0.99789453
+  - source: results/phase4a_shift004_linewidth_l3/method_enhance_tailaware/metrics_table.csv
+  - interpretation: all listed metrics improved in this seed.
+- CNN+TailAware+HardWeight:
+  - RMSE=0.01447156, MAE=0.01117076, P95=0.02852043, P99=0.04169144, R2=0.99748391
+  - source: results/phase4a_shift004_linewidth_l3/method_enhance_tailaware_hard/metrics_table.csv
+  - interpretation: this single seed regressed.
+
+4.2) Multi-seed tail-optimization check (seeds: 42,43,44,45,46)
+- Summary file:
+  - results/phase4a_shift004_linewidth_l3/multiseed_tailaware_summary.csv
+- Mean +- std:
+  - Baseline CNN:
+    - RMSE=0.01367874 +- 0.00059954
+    - MAE =0.01052692 +- 0.00041190
+    - P95 =0.02686115 +- 0.00154059
+    - P99 =0.03929687 +- 0.00304082
+    - R2  =0.99774859 +- 0.00019654
+  - Tail-aware:
+    - RMSE=0.01360326 +- 0.00028055
+    - MAE =0.01044753 +- 0.00018051
+    - P95 =0.02626235 +- 0.00074345
+    - P99 =0.03922367 +- 0.00237737
+    - R2  =0.99777603 +- 0.00009186
+  - Tail-aware+Hard:
+    - RMSE=0.01355332 +- 0.00063849
+    - MAE =0.01042631 +- 0.00049102
+    - P95 =0.02604971 +- 0.00192582
+    - P99 =0.03857305 +- 0.00255855
+    - R2  =0.99778917 +- 0.00020988
+- Paired deltas vs baseline (mean over same seeds):
+  - Tail-aware:
+    - dRMSE=-0.00007547, dMAE=-0.00007940, dP95=-0.00059879, dP99=-0.00007320, dR2=+0.00002744
+  - Tail-aware+Hard:
+    - dRMSE=-0.00012542, dMAE=-0.00010062, dP95=-0.00081144, dP99=-0.00072382, dR2=+0.00004058
+- P95 best count by seed:
+  - Baseline: 0/5
+  - Tail-aware: 2/5
+  - Tail-aware+Hard: 3/5
+- Interpretation:
+  - Tail-aware and Tail-aware+Hard both improve mean P95 vs baseline.
+  - Tail-aware+Hard has stronger average tail gain but higher variance.
+
+5) Positioning versus other existing enhancement tracks
+- CNN+LightSE seed-sweep summary (existing):
+  - source: results/phase4a_shift004_linewidth_l3/method_enhance_cnn_vs_lightse/seed_sweep_summary.json
+  - mean gains were mixed, with weaker P99 behavior in that summary.
+- C2F refine v2 multi-seed summary (existing):
+  - source: results/phase4a_shift004_linewidth_l3/method_enhance_c2f_refine_v2_multiseed/summary.csv
+  - reported P95 mean for v2: 0.026020236 (wins 4/5 vs its baseline CNN).
+- Current practical view:
+  - BiLSTM is not the preferred next step for hardest case.
+  - Tail-aware training is a low-friction and effective direction.
+  - Tail-aware+Hard is promising for tail metrics but needs variance control if production stability is required.
+
+6) Key files for current status tracking
+- Models and training:
+  - src/ofdr/models/phase3_cnn.py
+  - src/ofdr/training/phase3_train_utils.py
+  - src/phase3/runner.py
+  - src/phase3/run_cnn_bilstm.py
+- Hardest-case method runners:
+  - src/phase4a/run_method_enhance_cnn_vs_bilstm.py
+  - src/phase4a/run_method_enhance_cnn_tailaware.py
+- Configs:
+  - config/phase3_cnn_bilstm.yaml
+  - config/phase4a_shift004_linewidth_l3_method_bilstm.yaml
+  - config/phase4a_shift004_linewidth_l3_method_tailaware_baseline.yaml
+  - config/phase4a_shift004_linewidth_l3_method_tailaware.yaml
+  - config/phase4a_shift004_linewidth_l3_method_tailaware_hard.yaml
+
+7) Recommended immediate next step
+- Run a small grid around tail-aware+hard to reduce variance while keeping tail gains:
+  - alpha in [1.0, 1.25, 1.5]
+  - tau_hard in [0.008, 0.010, 0.012]
+  - keep all other settings fixed for fair compare.
+
+End of summary.

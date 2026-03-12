@@ -1,0 +1,22 @@
+phase4a:
+  seed: 42
+  dataset_path: data/processed/dataset_c_phase4a_shift004_linewidth_l3.npz
+  results_dir: results/phase4a_shift004_linewidth_l3
+train:
+  batch_size: 128
+  lr: 0.001
+  weight_decay: 0.0
+  epochs: 45
+  patience: 10
+  loss:
+    name: tail_aware_l1
+    tau: 0.01
+    lambda_tail: 3.0
+  hard_weighting:
+    enabled: true
+    tau: 0.01
+    alpha: 1.0
+method_enhance:
+  method_label: CNN+TailAware+HardWeight
+  results_subdir: tail_grid_20260312_s1_tail_hard_a1p0_t0p01_seed42
+  seed_cnn_offset: 21
