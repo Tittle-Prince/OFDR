@@ -77,7 +77,62 @@ class ConvRegressor(nn.Module):
         return self.head(x).squeeze(-1)
 
 
-def build_model(method_key: str, input_dim: int) -> nn.Module:
+class CNNBiLSTMRegressor(nn.Module):
+    def __init__(
+        self,
+        input_dim: int,
+        bilstm_hidden: int = 64,
+        bilstm_layers: int = 1,
+        bidirectional: bool = True,
+    ):
+        super().__init__()
+        if int(bilstm_layers) != 1:
+            raise ValueError("CNNBiLSTMRegressor only supports bilstm_layers=1 for this minimal implementation.")
+
+        # Reuse the existing baseline CNN feature extractor to keep a strict incremental comparison.
+        base_cnn = ConvRegressor(input_dim=input_dim, use_dilation=False, use_se=False)
+        self.block1 = base_cnn.block1
+        self.block2 = base_cnn.block2
+        self.block3 = base_cnn.block3
+
+        with torch.no_grad():
+            dummy = torch.zeros(1, 1, input_dim)
+            feat = self._forward_features(dummy)  # [1, C, L]
+            feat_channels = int(feat.shape[1])
+
+        self.bilstm = nn.LSTM(
+            input_size=feat_channels,
+            hidden_size=int(bilstm_hidden),
+            num_layers=1,
+            batch_first=True,
+            bidirectional=bool(bidirectional),
+        )
+        lstm_out_dim = int(bilstm_hidden) * (2 if bool(bidirectional) else 1)
+        self.head = nn.Sequential(
+            nn.Linear(lstm_out_dim, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1),
+        )
+
+    def _forward_features(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        return x
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Input: [B, N] -> CNN features: [B, C, L]
+        x = x.unsqueeze(1)
+        feat = self._forward_features(x)
+        # BiLSTM expects [B, seq_len, feature_dim].
+        seq = feat.transpose(1, 2)
+        seq_out, _ = self.bilstm(seq)
+        # Mean pooling over sequence is shape-stable for variable spectrum lengths.
+        pooled = seq_out.mean(dim=1)
+        return self.head(pooled).squeeze(-1)
+
+
+def build_model(method_key: str, input_dim: int, **kwargs: int | bool) -> nn.Module:
     if method_key == "cnn_baseline":
         return ConvRegressor(input_dim=input_dim, use_dilation=False, use_se=False)
     if method_key == "cnn_dilated":
@@ -86,5 +141,12 @@ def build_model(method_key: str, input_dim: int) -> nn.Module:
         return ConvRegressor(input_dim=input_dim, use_dilation=False, use_se=True)
     if method_key == "cnn_dilated_se":
         return ConvRegressor(input_dim=input_dim, use_dilation=True, use_se=True)
+    if method_key == "cnn_bilstm":
+        return CNNBiLSTMRegressor(
+            input_dim=input_dim,
+            bilstm_hidden=int(kwargs.get("bilstm_hidden", 64)),
+            bilstm_layers=int(kwargs.get("bilstm_layers", 1)),
+            bidirectional=bool(kwargs.get("bidirectional", True)),
+        )
     raise ValueError(f"Unknown method_key: {method_key}")
 

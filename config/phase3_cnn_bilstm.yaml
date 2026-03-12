@@ -1,0 +1,47 @@
+phase3:
+  seed: 42
+  source_dataset_a_path: "data/processed/dataset_a_phase1.npz"
+  dataset_b_path: "data/processed/dataset_b_phase3.npz"
+  results_dir: "results/phase3"
+
+dataset_b:
+  lambda_b0_nm: 1550.0
+  base_linewidth_nm: 0.10
+  normalize: "minmax_per_sample"
+  clip_to_nonnegative: true
+
+  white_noise_std_min: 0.006
+  white_noise_std_max: 0.020
+  amplitude_scale_min: 0.85
+  amplitude_scale_max: 1.15
+
+  baseline_offset_min: -0.03
+  baseline_offset_max: 0.03
+  baseline_slope_min: -0.06
+  baseline_slope_max: 0.06
+  baseline_curve_min: -0.02
+  baseline_curve_max: 0.02
+
+  width_scale_min: 0.90
+  width_scale_max: 1.15
+  skew_min: -0.10
+  skew_max: 0.10
+  ripple_amp_min: 0.0
+  ripple_amp_max: 0.012
+  ripple_freq_min: 1.0
+  ripple_freq_max: 4.0
+  ripple_phase_min: 0.0
+  ripple_phase_max: 6.283185307179586
+
+train:
+  batch_size: 128
+  lr: 0.001
+  weight_decay: 0.0
+  epochs: 45
+  patience: 10
+
+model:
+  name: "cnn_bilstm"
+  bilstm_hidden: 64
+  bilstm_layers: 1
+  bidirectional: true

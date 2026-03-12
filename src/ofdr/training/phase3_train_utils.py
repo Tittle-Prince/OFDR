@@ -23,11 +23,52 @@ def make_loaders(
     return train_loader, val_loader
 
 
+def _compute_per_sample_loss(pred: torch.Tensor, target: torch.Tensor, loss_cfg: dict) -> torch.Tensor:
+    """
+    Return per-sample loss values without reduction.
+
+    Supported losses:
+    - mse (default): e^2
+    - tail_aware_l1: |e| + lambda_tail * max(0, |e| - tau)^2
+      This keeps the base L1 error while adding extra penalty only on large-error
+      samples, so optimization pays more attention to tail behavior (e.g. P95).
+    """
+    err = pred - target
+    name = str(loss_cfg.get("name", "mse")).lower()
+    if name == "mse":
+        return err.pow(2)
+    if name == "tail_aware_l1":
+        tau = float(loss_cfg.get("tau", 0.01))
+        lambda_tail = float(loss_cfg.get("lambda_tail", 3.0))
+        abs_err = torch.abs(err)
+        tail = torch.clamp(abs_err - tau, min=0.0)
+        return abs_err + lambda_tail * tail.pow(2)
+    raise ValueError(f"Unsupported loss.name: {name}")
+
+
+def _apply_hard_weighting(per_sample_loss: torch.Tensor, abs_err: torch.Tensor, hard_cfg: dict) -> torch.Tensor:
+    """
+    Lightweight batch-wise hard sample weighting:
+      weight_i = 1 + alpha * I(|e_i| > tau_hard)
+    Used only in training. It increases gradient contribution from high-error
+    samples to prioritize tail metrics (especially P95), rather than only mean error.
+    """
+    if not bool(hard_cfg.get("enabled", False)):
+        return per_sample_loss
+
+    tau_hard = float(hard_cfg.get("tau", 0.01))
+    alpha = float(hard_cfg.get("alpha", 1.5))
+    weights = 1.0 + alpha * (abs_err > tau_hard).to(per_sample_loss.dtype)
+    return per_sample_loss * weights
+
+
 def train_model(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader, cfg_train: dict, device: torch.device) -> nn.Module:
     lr = float(cfg_train["lr"])
     wd = float(cfg_train["weight_decay"])
     epochs = int(cfg_train["epochs"])
     patience = int(cfg_train["patience"])
+    loss_cfg = dict(cfg_train.get("loss", {}))
+    hard_cfg = dict(cfg_train.get("hard_weighting", {}))
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
     criterion = nn.MSELoss()
@@ -42,7 +83,11 @@ def train_model(model: nn.Module, train_loader: DataLoader, val_loader: DataLoad
             xb = xb.to(device)
             yb = yb.to(device)
             optimizer.zero_grad()
-            loss = criterion(model(xb), yb)
+            pred = model(xb)
+            per_sample = _compute_per_sample_loss(pred, yb, loss_cfg=loss_cfg)
+            abs_err = torch.abs(pred - yb)
+            per_sample = _apply_hard_weighting(per_sample, abs_err=abs_err, hard_cfg=hard_cfg)
+            loss = per_sample.mean()
             loss.backward()
             optimizer.step()
 

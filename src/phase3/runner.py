@@ -20,7 +20,15 @@ def run_single_method(cfg: dict, method_key: str, display_name: str) -> dict:
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = build_model(method_key=method_key, input_dim=data.x.shape[1]).to(device)
+    model_kwargs: dict[str, int | bool] = {}
+    if method_key == "cnn_bilstm":
+        model_cfg = cfg.get("model", {})
+        model_kwargs = {
+            "bilstm_hidden": int(model_cfg.get("bilstm_hidden", 64)),
+            "bilstm_layers": int(model_cfg.get("bilstm_layers", 1)),
+            "bidirectional": bool(model_cfg.get("bidirectional", True)),
+        }
+    model = build_model(method_key=method_key, input_dim=data.x.shape[1], **model_kwargs).to(device)
     model = train_model(model, train_loader, val_loader, cfg["train"], device)
 
     y_true = data.y_dlambda[data.idx_test]
@@ -32,4 +40,3 @@ def run_single_method(cfg: dict, method_key: str, display_name: str) -> dict:
     print(f"{display_name} | RMSE={metrics['rmse']:.6f} nm | MAE={metrics['mae']:.6f} nm | R2={metrics['r2']:.6f}")
     print(f"Saved model to: {out / 'model.pt'}")
     return metrics
-
