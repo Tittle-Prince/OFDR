@@ -1,0 +1,35 @@
+phase4a:
+  seed: 42
+  dataset_path: "data/processed/dataset_c_phase4a_shift004_linewidth_l3.npz"
+  results_dir: "results/phase4a_shift004_linewidth_l3"
+
+train:
+  batch_size: 128
+  lr: 0.001
+  weight_decay: 0.0
+  epochs: 45
+  patience: 10
+  loss:
+    name: "mse"
+  hard_weighting:
+    enabled: false
+    tau: 0.01
+    alpha: 1.5
+
+model:
+  model_name: "nad_net_v1"
+  in_channels: 1
+  use_derivative_d1: false
+  use_derivative_d2: false
+  use_aux_head: false
+  lambda_aux: 0.1
+  base_channels: 32
+  local_kernel: 3
+  context_kernel: 9
+  context_dilation: 2
+
+method_enhance:
+  method_label: "E_NADNetV1_1ch_noaux"
+  results_subdir: "method_enhance_nad_v1_E"
+  seed_offset: 21
+

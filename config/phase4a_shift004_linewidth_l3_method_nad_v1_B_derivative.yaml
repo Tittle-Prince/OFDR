@@ -1,0 +1,32 @@
+phase4a:
+  seed: 42
+  dataset_path: "data/processed/dataset_c_phase4a_shift004_linewidth_l3.npz"
+  results_dir: "results/phase4a_shift004_linewidth_l3"
+
+train:
+  batch_size: 128
+  lr: 0.001
+  weight_decay: 0.0
+  epochs: 45
+  patience: 10
+  loss:
+    name: "mse"
+  hard_weighting:
+    enabled: false
+    tau: 0.01
+    alpha: 1.5
+
+model:
+  model_name: "cnn_baseline"
+  in_channels: 3
+  use_derivative_d1: true
+  use_derivative_d2: true
+  name: "cnn_baseline"
+  use_derivative_input: true
+  use_aux_head: false
+  lambda_aux: 0.1
+
+method_enhance:
+  method_label: "B_CNN_3ch_deriv"
+  results_subdir: "method_enhance_nad_v1_B"
+  seed_offset: 21
