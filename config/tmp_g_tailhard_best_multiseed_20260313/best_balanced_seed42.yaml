@@ -1,0 +1,29 @@
+phase4a:
+  seed: 42
+  dataset_path: data/processed/dataset_c_phase4a_shift004_linewidth_l3.npz
+  results_dir: results/phase4a_shift004_linewidth_l3
+train:
+  batch_size: 128
+  lr: 0.001
+  weight_decay: 0.0
+  epochs: 45
+  patience: 10
+  loss:
+    name: tail_aware_l1
+    tau: 0.008
+    lambda_tail: 2.0
+  hard_weighting:
+    enabled: true
+    tau: 0.015
+    alpha: 0.5
+model:
+  model_name: cnn_baseline
+  in_channels: 2
+  use_derivative_d1: true
+  use_derivative_d2: false
+  use_aux_head: false
+  lambda_aux: 0.1
+method_enhance:
+  method_label: G_tailhard_ltau0p008_lam2p0_a0p5_ht0p015
+  results_subdir: method_enhance_nad_v1_G_tailhard_ltau0p008_lam2p0_a0p5_ht0p015_seed42
+  seed_offset: 21

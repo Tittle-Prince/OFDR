@@ -1,0 +1,44 @@
+phase4a:
+  seed: 42
+  dataset_path: "data/processed/dataset_c_phase4a_shift004_linewidth_l3.npz"
+  results_dir: "results/phase4a_shift004_linewidth_l3"
+
+train:
+  batch_size: 128
+  lr: 0.001
+  weight_decay: 0.0
+  epochs: 35
+  patience: 8
+  loss:
+    name: "mse"
+  hard_weighting:
+    enabled: false
+    tau: 0.01
+    alpha: 1.5
+  finetune:
+    enabled: true
+    epochs: 12
+    patience: 4
+    lr: 0.0002
+    loss:
+      name: "tail_aware_l1"
+      tau: 0.01
+      lambda_tail: 3.0
+    hard_weighting:
+      enabled: false
+      tau: 0.01
+      alpha: 1.5
+
+model:
+  model_name: "cnn_baseline"
+  in_channels: 2
+  use_derivative_d1: true
+  use_derivative_d2: false
+  use_aux_head: false
+  lambda_aux: 0.1
+
+method_enhance:
+  method_label: "G_CNN_2ch_raw_d1_twostage"
+  results_subdir: "method_enhance_nad_v1_G_twostage"
+  seed_offset: 21
+

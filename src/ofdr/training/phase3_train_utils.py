@@ -167,21 +167,22 @@ def _split_model_output(output: torch.Tensor | tuple[torch.Tensor, torch.Tensor]
     return output, None
 
 
-def train_model(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader, cfg_train: dict, device: torch.device) -> nn.Module:
-    lr = float(cfg_train["lr"])
-    wd = float(cfg_train["weight_decay"])
-    epochs = int(cfg_train["epochs"])
-    patience = int(cfg_train["patience"])
-    loss_cfg = dict(cfg_train.get("loss", {}))
-    hard_cfg = dict(cfg_train.get("hard_weighting", {}))
-    aux_cfg = dict(cfg_train.get("aux_loss", {}))
-    aux_enabled = bool(aux_cfg.get("enabled", False))
-    lambda_aux = float(aux_cfg.get("lambda_aux", 0.1))
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
-    criterion = nn.MSELoss()
-    aux_criterion = nn.MSELoss()
-
+def _train_stage(
+    model: nn.Module,
+    train_loader: DataLoader,
+    val_loader: DataLoader,
+    device: torch.device,
+    optimizer: torch.optim.Optimizer,
+    criterion: nn.Module,
+    aux_criterion: nn.Module,
+    epochs: int,
+    patience: int,
+    loss_cfg: dict,
+    hard_cfg: dict,
+    aux_enabled: bool,
+    lambda_aux: float,
+    epoch_offset: int = 0,
+) -> tuple[dict[str, torch.Tensor] | None, float]:
     best_val = float("inf")
     best_state = None
     stale = 0
@@ -236,17 +237,21 @@ def train_model(model: nn.Module, train_loader: DataLoader, val_loader: DataLoad
                 pred_main, _ = _split_model_output(model(xb))
                 val_losses.append(float(criterion(pred_main, yb).item()))
         val_mse = float(np.mean(val_losses))
-        if epoch % 5 == 0 or epoch == 1:
+        full_epoch = epoch_offset + epoch
+        if full_epoch % 5 == 0 or full_epoch == 1:
             train_main = float(np.mean(train_main_losses)) if train_main_losses else float("nan")
             train_total = float(np.mean(train_total_losses)) if train_total_losses else float("nan")
             if aux_enabled:
                 train_aux = float(np.mean(train_aux_losses)) if train_aux_losses else float("nan")
                 print(
-                    f"Epoch {epoch:03d} | train_main={train_main:.6f} | train_aux={train_aux:.6f} | "
+                    f"Epoch {full_epoch:03d} | train_main={train_main:.6f} | train_aux={train_aux:.6f} | "
                     f"train_total={train_total:.6f} | val_mse={val_mse:.6f}"
                 )
             else:
-                print(f"Epoch {epoch:03d} | train_main={train_main:.6f} | train_total={train_total:.6f} | val_mse={val_mse:.6f}")
+                print(
+                    f"Epoch {full_epoch:03d} | train_main={train_main:.6f} | "
+                    f"train_total={train_total:.6f} | val_mse={val_mse:.6f}"
+                )
 
         if val_mse < best_val:
             best_val = val_mse
@@ -255,8 +260,73 @@ def train_model(model: nn.Module, train_loader: DataLoader, val_loader: DataLoad
         else:
             stale += 1
             if stale >= patience:
-                print(f"Early stop at epoch {epoch}, best val_mse={best_val:.6f}")
+                print(f"Early stop at epoch {full_epoch}, best val_mse={best_val:.6f}")
                 break
+
+    return best_state, best_val
+
+
+def train_model(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader, cfg_train: dict, device: torch.device) -> nn.Module:
+    lr = float(cfg_train["lr"])
+    wd = float(cfg_train["weight_decay"])
+    epochs = int(cfg_train["epochs"])
+    patience = int(cfg_train["patience"])
+    loss_cfg = dict(cfg_train.get("loss", {}))
+    hard_cfg = dict(cfg_train.get("hard_weighting", {}))
+    aux_cfg = dict(cfg_train.get("aux_loss", {}))
+    aux_enabled = bool(aux_cfg.get("enabled", False))
+    lambda_aux = float(aux_cfg.get("lambda_aux", 0.1))
+    finetune_cfg = dict(cfg_train.get("finetune", {}))
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
+    criterion = nn.MSELoss()
+    aux_criterion = nn.MSELoss()
+    best_state, best_val = _train_stage(
+        model=model,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        device=device,
+        optimizer=optimizer,
+        criterion=criterion,
+        aux_criterion=aux_criterion,
+        epochs=epochs,
+        patience=patience,
+        loss_cfg=loss_cfg,
+        hard_cfg=hard_cfg,
+        aux_enabled=aux_enabled,
+        lambda_aux=lambda_aux,
+        epoch_offset=0,
+    )
+
+    if best_state is not None:
+        model.load_state_dict(best_state)
+
+    if bool(finetune_cfg.get("enabled", False)):
+        ft_epochs = int(finetune_cfg.get("epochs", 10))
+        ft_patience = int(finetune_cfg.get("patience", min(5, ft_epochs)))
+        ft_lr = float(finetune_cfg.get("lr", lr * 0.2))
+        ft_loss_cfg = dict(finetune_cfg.get("loss", loss_cfg))
+        ft_hard_cfg = dict(finetune_cfg.get("hard_weighting", hard_cfg))
+        ft_optimizer = torch.optim.Adam(model.parameters(), lr=ft_lr, weight_decay=wd)
+        ft_state, ft_best_val = _train_stage(
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            device=device,
+            optimizer=ft_optimizer,
+            criterion=criterion,
+            aux_criterion=aux_criterion,
+            epochs=ft_epochs,
+            patience=ft_patience,
+            loss_cfg=ft_loss_cfg,
+            hard_cfg=ft_hard_cfg,
+            aux_enabled=aux_enabled,
+            lambda_aux=lambda_aux,
+            epoch_offset=epochs,
+        )
+        if ft_state is not None and ft_best_val <= best_val:
+            best_state = ft_state
+            best_val = ft_best_val
 
     if best_state is not None:
         model.load_state_dict(best_state)
