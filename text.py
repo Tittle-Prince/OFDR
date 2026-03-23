@@ -1,133 +1,102 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.interpolate import interp1d
+from scipy.signal import find_peaks
 
 # =========================
-# 1. 生成示例数据（你后面替换成自己的真实数据）
+# Step 0: 参数设置
 # =========================
-np.random.seed(42)
+N = 4096                     # 采样点数
+lambda_start = 1549.0        # nm
+lambda_end = 1551.0          # nm
+lambdas = np.linspace(lambda_start, lambda_end, N)
 
-def gaussian(x, mu, sigma, amp=1.0):
-    return amp * np.exp(-0.5 * ((x - mu) / sigma) ** 2)
-
-def make_example_spectrum(x, true_pos, shift_left=-0.015, shift_right=0.018,
-                          sigma_center=0.010, sigma_neighbor=0.012,
-                          amp_center=1.0, amp_neighbor=0.55, asym=0.0):
-    """
-    构造一个带邻峰干扰和轻微不对称的示例谱
-    """
-    y_center = gaussian(x, true_pos, sigma_center, amp_center)
-    y_left   = gaussian(x, true_pos + shift_left, sigma_neighbor, amp_neighbor)
-    y_right  = gaussian(x, true_pos + shift_right, sigma_neighbor * (1 + 0.2*asym), amp_neighbor * 0.9)
-
-    y = y_center + y_left + y_right
-
-    # 加一点 baseline 和轻微起伏
-    baseline = 0.02 + 0.01 * np.sin((x - x.min()) / (x.max() - x.min()) * 2*np.pi)
-    y = y + baseline
-
-    # 加轻微噪声
-    y = y + np.random.normal(0, 0.002, size=len(x))
-
-    # 归一化
-    y = (y - y.min()) / (y.max() - y.min() + 1e-12)
-    return y
-
-# 横轴：局部波长窗口（示例）
-x = np.linspace(1549.92, 1550.08, 512)
-
-# 构造 3 个示例样本
-samples = []
-
-# sample 1: G明显更好
-true1 = 1550.000
-y1 = make_example_spectrum(x, true1, shift_left=-0.017, shift_right=0.016, sigma_center=0.010, asym=0.4)
-pred_A_1 = 1550.0065
-pred_G_1 = 1550.0018
-samples.append(("Sample 1", x, y1, true1, pred_A_1, pred_G_1))
-
-# sample 2: 线宽更大，结构性偏移更明显
-true2 = 1550.012
-y2 = make_example_spectrum(x, true2, shift_left=-0.020, shift_right=0.014, sigma_center=0.013, asym=0.8)
-pred_A_2 = 1550.0182
-pred_G_2 = 1550.0135
-samples.append(("Sample 2", x, y2, true2, pred_A_2, pred_G_2))
-
-# sample 3: 邻峰侵入较明显
-true3 = 1549.988
-y3 = make_example_spectrum(x, true3, shift_left=-0.012, shift_right=0.012, sigma_center=0.011, amp_neighbor=0.70, asym=0.5)
-pred_A_3 = 1549.9815
-pred_G_3 = 1549.9868
-samples.append(("Sample 3", x, y3, true3, pred_A_3, pred_G_3))
-
+# 光栅位置（模拟3个FBG，制造重叠）
+fbg_positions = [1550.0, 1550.02, 1550.04]
+amplitudes = [1.0, 0.8, 0.6]
+widths = [0.01, 0.015, 0.02]
 
 # =========================
-# 2. 绘图函数
+# Step 1: 构造“光谱”（真实反射）
 # =========================
-def plot_typical_cases(samples, save_path=None):
-    """
-    samples: list of tuples
-      (title, x, y_raw, true_pos, pred_A, pred_G)
-    """
-    n = len(samples)
-    fig, axes = plt.subplots(
-        2, n,
-        figsize=(5.2 * n, 6.2),
-        sharex=False
-    )
+def gaussian(x, mu, sigma, A):
+    return A * np.exp(-(x - mu)**2 / (2 * sigma**2))
 
-    if n == 1:
-        axes = np.array(axes).reshape(2, 1)
-
-    for i, (title, x, y_raw, true_pos, pred_A, pred_G) in enumerate(samples):
-        # 一阶导数
-        d1 = np.gradient(y_raw, x)
-        d1 = d1 / (np.max(np.abs(d1)) + 1e-12)  # 归一化，便于显示
-
-        # ---------- 上图：原始谱 ----------
-        ax_top = axes[0, i]
-        ax_top.plot(x, y_raw, linewidth=2.0, label="Raw spectrum")
-        ax_top.axvline(true_pos, linestyle="--", linewidth=1.8, label="Ground truth")
-        ax_top.axvline(pred_A, linestyle="-.", linewidth=1.8, label="A prediction")
-        ax_top.axvline(pred_G, linestyle=":", linewidth=2.2, label="G prediction")
-
-        ax_top.set_title(title, fontsize=13)
-        ax_top.set_ylabel("Normalized amplitude", fontsize=11)
-        ax_top.grid(alpha=0.25)
-
-        err_A = abs(pred_A - true_pos)
-        err_G = abs(pred_G - true_pos)
-        ax_top.text(
-            0.02, 0.95,
-            f"|A-gt| = {err_A:.4f} nm\n|G-gt| = {err_G:.4f} nm",
-            transform=ax_top.transAxes,
-            va="top",
-            fontsize=10,
-            bbox=dict(boxstyle="round,pad=0.3", alpha=0.15)
-        )
-
-        # ---------- 下图：一阶导 ----------
-        ax_bot = axes[1, i]
-        ax_bot.plot(x, d1, linewidth=2.0, label="1st derivative")
-        ax_bot.axvline(true_pos, linestyle="--", linewidth=1.8)
-        ax_bot.axvline(pred_A, linestyle="-.", linewidth=1.8)
-        ax_bot.axvline(pred_G, linestyle=":", linewidth=2.2)
-
-        ax_bot.set_xlabel("Wavelength (nm)", fontsize=11)
-        ax_bot.set_ylabel("Normalized d1", fontsize=11)
-        ax_bot.grid(alpha=0.25)
-
-    # 统一图例（只取第一个子图的 handles）
-    handles, labels = axes[0, 0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=4, fontsize=11, frameon=False)
-
-    plt.tight_layout(rect=[0, 0, 1, 0.92])
-
-    if save_path is not None:
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
-    plt.show()
-
+spectrum = np.zeros_like(lambdas)
+for mu, A, w in zip(fbg_positions, amplitudes, widths):
+    spectrum += gaussian(lambdas, mu, w, A)
 
 # =========================
-# 3. 运行绘图
+# Step 2: 模拟OFDR拍频信号（干涉信号）
 # =========================
-plot_typical_cases(samples, save_path="typical_cases_example.png")
+# 实际系统更复杂，这里用简化模型
+k = 2 * np.pi / lambdas
+
+# 构造干涉信号（多个反射点叠加）
+signal = np.zeros_like(k)
+for i, (mu, A) in enumerate(zip(fbg_positions, amplitudes)):
+    z = (mu - 1550.0) * 1e3   # 简单映射到空间（单位随意）
+    signal += A * np.cos(2 * k * z)
+
+# 加一点噪声
+signal += 0.05 * np.random.randn(N)
+
+# =========================
+# Step 3: k空间重采样（关键）
+# =========================
+k_uniform = np.linspace(k.min(), k.max(), N)
+interp_func = interp1d(k, signal, kind='linear', fill_value="extrapolate")
+signal_k = interp_func(k_uniform)
+
+# =========================
+# Step 4: FFT → 空间域
+# =========================
+R_z = np.fft.fft(signal_k)
+R_z_abs = np.abs(R_z)
+
+# 只取前一半（实际距离）
+R_z_abs = R_z_abs[:N//2]
+
+# =========================
+# Step 5: 找峰（光栅位置）
+# =========================
+peaks, _ = find_peaks(R_z_abs, height=np.max(R_z_abs)*0.2)
+
+# =========================
+# Step 6: 截取局部窗口（CNN输入）
+# =========================
+window_size = 50
+local_spectra = []
+
+for p in peaks:
+    if p - window_size > 0 and p + window_size < len(R_z_abs):
+        local = R_z_abs[p - window_size : p + window_size]
+        local_spectra.append(local)
+
+local_spectra = np.array(local_spectra)
+
+# =========================
+# Step 7: 可视化（理解用）
+# =========================
+plt.figure(figsize=(12,8))
+
+plt.subplot(3,1,1)
+plt.title("Simulated spectrum (wavelength domain)")
+plt.plot(lambdas, spectrum)
+
+plt.subplot(3,1,2)
+plt.title("Simulated beat signal")
+plt.plot(signal_k)
+
+plt.subplot(3,1,3)
+plt.title("Spatial domain (after FFT)")
+plt.plot(R_z_abs)
+plt.scatter(peaks, R_z_abs[peaks], color='r')
+
+plt.tight_layout()
+plt.show()
+
+# =========================
+# Step 8: CNN输入示例
+# =========================
+print("CNN输入形状:", local_spectra.shape)

@@ -1,0 +1,53 @@
+phase4a:
+  seed: 42
+  dataset_path: "data/processed/dataset_c_phase4a_shift004_linewidth_l3.npz"
+  results_dir: "results/phase4a_shift004_linewidth_l3"
+
+array:
+  lambda0_nm: 1550.0
+
+train:
+  batch_size: 128
+  lr: 0.001
+  weight_decay: 0.0
+  epochs: 45
+  patience: 10
+  loss:
+    name: tail_aware_l1
+    tau: 0.01
+    lambda_tail: 3.0
+
+model:
+  use_refine_module: true
+  refine_window_size: 128
+  residual_clip_nm: 0.02
+  use_baseline_cnn_as_coarse: true
+
+method_c2f_v2:
+  results_subdir: "method_enhance_c2f_refine_v2_explicit_tailfocus_coarse_tailaware_gated"
+  seed_cnn_offset: 21
+  seed_refine_offset: 51
+  refine_channels_1: 16
+  refine_channels_2: 32
+  refine_hidden: 32
+  compare_with_old_c2f: false
+  refine_training:
+    use_tail_refine: true
+    tail_loss:
+      tau: 0.01
+      lambda_tail: 2.0
+    offline_hard_weighting:
+      enabled: true
+      alpha: 1.0
+      tau: 0.012
+      top_fraction: 0.15
+    explicit_modeling:
+      enabled: true
+      lambda_explicit: 0.05
+    risk_gate:
+      enabled: true
+      tau: 0.015
+      top_fraction: 0.10
+      lambda_gate: 0.05
+      bias_init: -2.0
+      power: 2.0
