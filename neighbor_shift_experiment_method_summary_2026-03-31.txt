@@ -1,0 +1,50 @@
+Neighbor-shift pre-experiment definition (paper-ready summary)
+Date: 2026-03-31
+Source file: d:\FBG\OFDR_PINN_Demodulation\paper_figures\Fig9_neighbor_shift_result\data_copy\neighbor_shift_temperature_combinations.csv
+
+1. Calibration mapping used to convert spectral shift to equivalent temperature
+   delta_lambda_pm = 4.900759991990173 * T_C - 97.7142596121484
+   T_C = (delta_lambda_pm + 97.7142596121484) / 4.900759991990173
+
+2. Experimental meaning of "independent temperature control"
+   For each experiment index i, the left neighbor, target, and right neighbor are assigned
+   three independent set temperatures: (T_left(i), T_target(i), T_right(i)).
+   The three channels are not synchronously varied by a single common offset. Instead,
+   each grating is set to its own temperature point, held at that point, and one sample
+   is acquired after stabilization. The resulting relative overlap state is determined by
+   the two spectral separations:
+      Delta_LT(i) = delta_target(i) - delta_left(i)
+      Delta_TR(i) = delta_right(i) - delta_target(i)
+
+3. Number of combinations
+   Total combinations used in the neighbor-shift experiment: 120
+
+4. Temperature ranges actually used
+   Left neighbor : 12.907 to 18.658 C
+   Target        : 13.830 to 25.836 C
+   Right neighbor: 21.178 to 27.008 C
+
+5. Equivalent spectral-shift ranges actually used
+   Left neighbor : -34.463 to -6.277 pm
+   Target        : -29.935 to 28.903 pm
+   Right neighbor: 6.072 to 34.644 pm
+
+6. Relative separation ranges actually covered
+   Delta_LT = target - left : -20.010 to 60.574 pm
+   Delta_TR = right - target: -15.682 to 58.840 pm
+
+7. Recommended strict wording for the paper
+   "In the neighbor-shift experiment, three independent temperature-control channels were
+   assigned to the left neighbor, target, and right neighbor gratings, respectively. A total
+   of 120 static temperature combinations were used. For the i-th combination, the three
+   set temperatures were (T_left(i), T_target(i), T_right(i)), with the left, target, and right
+   temperatures spanning 12.9-18.7 C,
+   13.8-25.8 C, and
+   21.2-27.0 C, respectively.
+   This design covered continuously varying relative spectral separations between the target
+   peak and its two neighboring peaks, thereby constructing multiple overlap states from mild
+   to strong neighbor-shift conditions."
+
+8. Files
+   Full combination table with exact temperatures and relative separations:
+   d:\FBG\OFDR_PINN_Demodulation\neighbor_shift_temperature_combinations_full.csv

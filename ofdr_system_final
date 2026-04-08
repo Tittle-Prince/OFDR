@@ -1,0 +1,47 @@
+// OFDR System Architecture
+digraph {
+	dpi=300 nodesep=0.6 rankdir=LR ranksep=0.8
+	node [fontname="Times New Roman" fontsize=12 penwidth=1.2 shape=box style=solid]
+	edge [arrowsize=0.8 fontname="Times New Roman" fontsize=11 penwidth=1.0]
+	NLL [label=NLL]
+	C_split [label=Coupler]
+	C_5050 [label="Coupler
+(50:50 Coupler)"]
+	Circ1 [label="Circulator 1" fixedsize=true shape=circle width=0.8]
+	Circ2 [label="Circulator 2" fixedsize=true shape=circle width=0.8]
+	Sensing [label="Sensing Fiber Array
+||||   ||||   ...   ||||
+FBG  FBG        FBG" shape=plaintext]
+	Ref [label="Reference Fiber" shape=plaintext]
+	PD [label="PD
+(Balanced Detector)
+(400 MHz Bandwidth)"]
+	DSO [label="DSO
+(Digital Sampling
+Oscilloscope)
+(5 MSa/s Sampling rate)"]
+	PC [label=PC]
+	NLL -> C_split
+	C_split -> Circ1
+	C_split -> Circ2
+	Circ1 -> Sensing [label=" 2"]
+	Sensing -> Circ1
+	Circ1 -> C_5050 [label=" 3"]
+	Circ2 -> Ref [label=" 2"]
+	Ref -> Circ2
+	Circ2 -> C_5050 [label=" 3"]
+	C_5050 -> PD
+	PD -> DSO
+	DSO -> PC
+	{
+		rank=same
+		Circ1
+		Circ2
+	}
+	{
+		rank=same
+		Sensing
+		C_5050
+		Ref
+	}
+}

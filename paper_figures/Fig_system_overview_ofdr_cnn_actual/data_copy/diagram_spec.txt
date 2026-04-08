@@ -1,0 +1,20 @@
+Actual-consistent OFDR-CNN system overview
+
+Key corrections vs simplified draft:
+1. Local spectrum input length is 512, not 256.
+2. Baseline CNN architecture is:
+   Conv1d(1->32,k7)+ReLU+MaxPool
+   Conv1d(32->64,k5)+ReLU+MaxPool
+   Conv1d(64->128,k5)+ReLU
+   Flatten -> Linear(128 hidden) -> Linear(1)
+3. Tail-aware loss is a training objective, not an inference block.
+4. Main tail-aware config:
+   tau = 0.01
+   lambda_tail = 3.0
+   hard weighting tau = 0.01, alpha = 1.5
+
+Sources:
+- src/ofdr/models/phase3_cnn.py
+- src/ofdr/training/phase3_train_utils.py
+- config/phase4a_shift004_linewidth_l3_method_tailaware_hard.yaml
+- Real/stage1_three_grating_ideal_ofdr_bridge.py

@@ -1,0 +1,10 @@
+Figure type: SCI-style OFDR system overview diagram
+Style: black and white, thin arrows, rectangular modules
+Flow:
+Integrated OFDR Unit -> Identical UWFBG Array -> Backscattered Signal ->
+Interferometric Signal Acquisition -> FFT / Distance-Domain Processing ->
+Local Spectral Window Extraction -> 1D CNN + Tail-aware Loss -> Output
+Zoom-in annotation terms:
+- neighbor shift
+- linewidth asymmetry
+- system artifact

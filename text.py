@@ -1,102 +1,74 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.interpolate import interp1d
-from scipy.signal import find_peaks
+import graphviz
 
-# =========================
-# Step 0: 参数设置
-# =========================
-N = 4096                     # 采样点数
-lambda_start = 1549.0        # nm
-lambda_end = 1551.0          # nm
-lambdas = np.linspace(lambda_start, lambda_end, N)
+def generate_final_ofdr_diagram():
+    # 创建有向图，设置整体格式和高分辨率
+    dot = graphviz.Digraph(comment='OFDR System Architecture', format='pdf')
+    dot.attr(rankdir='LR', nodesep='0.6', ranksep='0.8', dpi='300')
+    
+    # 全局节点和连线样式设置
+    dot.attr('node', shape='box', style='solid', fontname='Times New Roman', fontsize='12', penwidth='1.2')
+    dot.attr('edge', fontname='Times New Roman', fontsize='11', penwidth='1.0', arrowsize='0.8')
 
-# 光栅位置（模拟3个FBG，制造重叠）
-fbg_positions = [1550.0, 1550.02, 1550.04]
-amplitudes = [1.0, 0.8, 0.6]
-widths = [0.01, 0.015, 0.02]
+    # ================= 定义节点 =================
+    
+    # 光源部分 (严格按照要求，只保留 NLL，无其他描述)
+    dot.node('NLL', 'NLL')
+    
+    # 耦合器
+    dot.node('C_split', 'Coupler')
+    dot.node('C_5050', 'Coupler\n(50:50 Coupler)')
+    
+    # 环形器
+    circ_style = {'shape': 'circle', 'width': '0.8', 'fixedsize': 'true'}
+    dot.node('Circ1', 'Circulator 1', **circ_style)
+    dot.node('Circ2', 'Circulator 2', **circ_style)
+    
+    # 传感阵列与参考臂 (仅保留 Reference Fiber，无光栅标记)
+    dot.node('Sensing', 'Sensing Fiber Array\n||||   ||||   ...   ||||\nFBG  FBG        FBG', shape='plaintext')
+    dot.node('Ref', 'Reference Fiber', shape='plaintext')
+    
+    # 探测与采集部分
+    dot.node('PD', 'PD\n(Balanced Detector)\n(400 MHz Bandwidth)')
+    dot.node('DSO', 'DSO\n(Digital Sampling\nOscilloscope)\n(5 MSa/s Sampling rate)')
+    dot.node('PC', 'PC')
 
-# =========================
-# Step 1: 构造“光谱”（真实反射）
-# =========================
-def gaussian(x, mu, sigma, A):
-    return A * np.exp(-(x - mu)**2 / (2 * sigma**2))
+    # ================= 定义连线 =================
+    
+    # 激光器分光
+    dot.edge('NLL', 'C_split')
+    dot.edge('C_split', 'Circ1')
+    dot.edge('C_split', 'Circ2')
+    
+    # 测量臂
+    dot.edge('Circ1', 'Sensing', label=' 2')
+    dot.edge('Sensing', 'Circ1') # 示意反射回光
+    dot.edge('Circ1', 'C_5050', label=' 3')
+    
+    # 参考臂 (此时连接的是普通单模光纤)
+    dot.edge('Circ2', 'Ref', label=' 2')
+    dot.edge('Ref', 'Circ2') # 示意反射回光
+    dot.edge('Circ2', 'C_5050', label=' 3')
+    
+    # 采集端
+    dot.edge('C_5050', 'PD')
+    dot.edge('PD', 'DSO')
+    dot.edge('DSO', 'PC')
 
-spectrum = np.zeros_like(lambdas)
-for mu, A, w in zip(fbg_positions, amplitudes, widths):
-    spectrum += gaussian(lambdas, mu, w, A)
+    # ================= 强制对齐以保证排版整洁 =================
+    with dot.subgraph() as s:
+        s.attr(rank='same')
+        s.node('Circ1')
+        s.node('Circ2')
 
-# =========================
-# Step 2: 模拟OFDR拍频信号（干涉信号）
-# =========================
-# 实际系统更复杂，这里用简化模型
-k = 2 * np.pi / lambdas
+    with dot.subgraph() as s:
+        s.attr(rank='same')
+        s.node('Sensing')
+        s.node('C_5050')
+        s.node('Ref')
 
-# 构造干涉信号（多个反射点叠加）
-signal = np.zeros_like(k)
-for i, (mu, A) in enumerate(zip(fbg_positions, amplitudes)):
-    z = (mu - 1550.0) * 1e3   # 简单映射到空间（单位随意）
-    signal += A * np.cos(2 * k * z)
+    # 渲染生成
+    dot.render('ofdr_system_final', view=True)
+    print("最终版架构图已生成为 ofdr_system_final.pdf")
 
-# 加一点噪声
-signal += 0.05 * np.random.randn(N)
-
-# =========================
-# Step 3: k空间重采样（关键）
-# =========================
-k_uniform = np.linspace(k.min(), k.max(), N)
-interp_func = interp1d(k, signal, kind='linear', fill_value="extrapolate")
-signal_k = interp_func(k_uniform)
-
-# =========================
-# Step 4: FFT → 空间域
-# =========================
-R_z = np.fft.fft(signal_k)
-R_z_abs = np.abs(R_z)
-
-# 只取前一半（实际距离）
-R_z_abs = R_z_abs[:N//2]
-
-# =========================
-# Step 5: 找峰（光栅位置）
-# =========================
-peaks, _ = find_peaks(R_z_abs, height=np.max(R_z_abs)*0.2)
-
-# =========================
-# Step 6: 截取局部窗口（CNN输入）
-# =========================
-window_size = 50
-local_spectra = []
-
-for p in peaks:
-    if p - window_size > 0 and p + window_size < len(R_z_abs):
-        local = R_z_abs[p - window_size : p + window_size]
-        local_spectra.append(local)
-
-local_spectra = np.array(local_spectra)
-
-# =========================
-# Step 7: 可视化（理解用）
-# =========================
-plt.figure(figsize=(12,8))
-
-plt.subplot(3,1,1)
-plt.title("Simulated spectrum (wavelength domain)")
-plt.plot(lambdas, spectrum)
-
-plt.subplot(3,1,2)
-plt.title("Simulated beat signal")
-plt.plot(signal_k)
-
-plt.subplot(3,1,3)
-plt.title("Spatial domain (after FFT)")
-plt.plot(R_z_abs)
-plt.scatter(peaks, R_z_abs[peaks], color='r')
-
-plt.tight_layout()
-plt.show()
-
-# =========================
-# Step 8: CNN输入示例
-# =========================
-print("CNN输入形状:", local_spectra.shape)
+if __name__ == '__main__':
+    generate_final_ofdr_diagram()
